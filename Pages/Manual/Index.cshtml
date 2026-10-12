@@ -1,0 +1,126 @@
+@page
+@model MS.Pages.Manual.IndexModel
+@*
+    ============================================================================
+    TELA: MANUAL (visual)  ·  lógica em Index.cshtml.cs
+    Abas: 1. Fluxo do sistema — o slide enviado, um por vez (setas, teclado ← →, deslizar no celular, tela cheia),
+             Baixar o arquivo e, para quem edita, Trocar o slide
+          2. Manual de uso — texto em _Conteudo.cshtml (?aba=manual abre direto nela)
+    Cores e tamanhos: estilos.css "Manual".
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Manual";
+    ViewData["Trilha"] = "Ajuda";
+    var abaManual = Model.Aba == "manual";
+    var total = Model.Slides.Count;
+}
+<p class="subtitulo-pagina">O fluxo do sistema e como usar cada tela, com todas as regras.</p>
+
+<div class="cartao">
+    <ul class="nav abas" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link @(abaManual ? "" : "active")" data-bs-toggle="tab" data-bs-target="#aba-fluxo">Fluxo do sistema</button></li>
+        <li class="nav-item"><button type="button" class="nav-link @(abaManual ? "active" : "")" data-bs-toggle="tab" data-bs-target="#aba-manual">Manual de uso</button></li>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane fade @(abaManual ? "" : "show active") pt-3" id="aba-fluxo">
+            @if (total > 0)
+            {
+                <div class="slides" id="slides">
+                    <div class="slides-palco">
+                        @for (var i = 0; i < total; i++)
+                        {
+                            <img src="@Url.Page("Index", "Slide", new { n = i + 1, v = Model.Versao })" alt="Slide @(i + 1)" hidden="@(i > 0)" />
+                        }
+                    </div>
+                    <div class="slides-barra">
+                        @if (total > 1)
+                        {
+                            <button type="button" class="btn-ms b-cinza" data-slide="-1" aria-label="Slide anterior">@Icones.Svg("esquerda")</button>
+                            <span class="slides-contador" id="slidesContador">1 / @total</span>
+                            <button type="button" class="btn-ms b-cinza" data-slide="1" aria-label="Próximo slide">@Icones.Svg("direita")</button>
+                        }
+                        <button type="button" class="btn-ms b-azulclaro ms-auto" id="slidesTelaCheia">@Icones.Svg("tela", 16) Tela cheia</button>
+                    </div>
+                </div>
+            }
+            else if (Model.EhPdf)
+            {
+                <iframe class="slides-pdf" src="@Url.Page("Index", "Original", new { ver = true, v = Model.Versao })" title="Fluxo do sistema"></iframe>
+            }
+            else
+            {
+                <p class="text-muted mb-0">Nenhum slide enviado ainda.</p>
+            }
+
+            @if (Model.Original is { } o)
+            {
+                <p class="slides-arquivo">
+                    <a href="@Url.Page("Index", "Original")">@Icones.Svg("baixar", 16) Baixar o slide</a>
+                    <span class="text-muted" data-sem-traducao>(@o.Nome)</span>
+                </p>
+            }
+
+            @if (Model.PodeEditar)
+            {
+                <form method="post" asp-page-handler="Enviar" enctype="multipart/form-data" class="slides-envio" id="formSlide">
+                    <label for="arquivoSlide">Trocar o slide</label>
+                    <div class="slides-envio-linha">
+                        <input class="form-control" type="file" id="arquivoSlide" name="arquivo" accept="@string.Join(",", MS.Servicos.Manual.Extensoes)" required />
+                        <button class="btn-ms b-azul" type="submit">@Icones.Svg("enviar", 16) Enviar</button>
+                    </div>
+                    <div class="ajuda">PowerPoint, PDF ou imagem. O PowerPoint vira uma imagem por slide (leva alguns segundos) e o arquivo novo substitui o atual.</div>
+                </form>
+            }
+        </div>
+
+        <div class="tab-pane fade @(abaManual ? "show active" : "") pt-3" id="aba-manual">
+            <partial name="_Conteudo" />
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    // Slides: um por vez — setas da tela, ← → do teclado (com a aba do fluxo aberta) e deslizar o dedo no celular.
+    (function () {
+        const caixa = document.getElementById('slides');
+        if (!caixa) return;
+        const imgs = [...caixa.querySelectorAll('.slides-palco img')];
+        const contador = document.getElementById('slidesContador');
+        let atual = 0;
+        function mostrar(i) {
+            atual = (i + imgs.length) % imgs.length;
+            imgs.forEach((img, j) => img.hidden = j !== atual);
+            if (contador) contador.textContent = `${atual + 1} / ${imgs.length}`;
+        }
+        caixa.querySelectorAll('[data-slide]').forEach(b => b.addEventListener('click', () => mostrar(atual + +b.dataset.slide)));
+        document.addEventListener('keydown', e => {
+            if (imgs.length < 2 || !document.getElementById('aba-fluxo').classList.contains('active')) return;
+            if (e.target.closest('input, textarea, select')) return;
+            if (e.key === 'ArrowRight') mostrar(atual + 1);
+            else if (e.key === 'ArrowLeft') mostrar(atual - 1);
+        });
+        let x0 = null;
+        caixa.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+        caixa.addEventListener('touchend', e => {
+            if (x0 === null || imgs.length < 2) return;
+            const dx = e.changedTouches[0].clientX - x0;
+            if (Math.abs(dx) > 50) mostrar(atual + (dx < 0 ? 1 : -1));
+            x0 = null;
+        });
+        // Tela cheia (no celular que não tem, abre a imagem do slide sozinha).
+        document.getElementById('slidesTelaCheia').addEventListener('click', () => {
+            if (document.fullscreenElement) document.exitFullscreen();
+            else if (caixa.requestFullscreen) caixa.requestFullscreen();
+            else window.open(imgs[atual].src, '_blank');
+        });
+    })();
+    // Enviar slide: o PowerPoint leva alguns segundos — o botão avisa e não deixa enviar duas vezes.
+    document.getElementById('formSlide')?.addEventListener('submit', e => {
+        const b = e.target.querySelector('button[type=submit]');
+        b.disabled = true;
+        b.textContent = window.msT ? msT('Enviando…') : 'Enviando…';
+    });
+</script>
+}

@@ -1,0 +1,89 @@
+@page
+@model MS.Pages.EscolherArea.IndexModel
+@*
+    ============================================================================
+    TELA: ESCOLHA A ÁREA (visual)  ·  lógica em Index.cshtml.cs  ·  não usa o menu lateral (tela entre o login e o sistema)
+    Partes: 1. topo (marca do sistema, idioma, Sair) · 2. título escondido · 3. cards centralizados: um por área, só com a logo
+    (área sem logo: ícone + nome; × esconde o card da tela). Card da área escolhida: etiqueta "Atual" + "Mostrar todas as áreas" quando há card escondido.
+    Nome das áreas: tela Áreas. Logos: enviadas na tela Áreas (dados/fotos/logos-areas).
+    Cores e tamanhos: estilos.css seção 11 (procure "Escolha a área").
+    ============================================================================
+*@
+@{
+    Layout = null;
+    string Escolhida(int id) => Model.Atual == id ? "escolhida" : "";
+}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1A1740" />
+    <partial name="_IdiomaHead" />
+    <title>Escolha a área · MS-SYSTEM MAINTENANCE</title>
+    <link rel="icon" href="~/img/logo.svg" asp-append-version="true" type="image/svg+xml" />
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/estilos.css" asp-append-version="true" />
+</head>
+<body class="pagina-areas">
+    @* 1. Topo: o mesmo do sistema, sem o hambúrguer (aqui ainda não há menu). *@
+    <header class="topo">
+        <span class="marca">
+            <img class="marca-icone" src="~/img/logo.svg" asp-append-version="true" alt="" />
+            <span class="marca-texto" data-sem-traducao><b class="marca-sigla">MS</b> <span class="marca-nome">Maintenance</span></span>
+        </span>
+        <div class="topo-direita">
+            <partial name="_SeletorIdioma" />
+            <form method="post" asp-page="/Conta/Sair">
+                <button class="btn-usuario areas-sair" type="submit" title="Sair">@Icones.Svg("sair", 18) <span>Sair</span></button>
+            </form>
+        </div>
+    </header>
+
+    <main class="areas-conteudo">
+        @* 2. Título só para leitores de tela (na tela aparecem direto os cards). *@
+        <h1 class="visually-hidden">Escolha a área</h1>
+
+        @if (TempData["ok"] is string ok)
+        {
+            <div class="alert alert-success alert-dismissible fade show">@ok<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+        }
+        @if (TempData["erro"] is string erro)
+        {
+            <div class="alert alert-danger alert-dismissible fade show">@erro<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+        }
+
+        @* 3. Cards (centralizados na tela). *@
+        <div class="areas-grade">
+            @foreach (var c in Model.Cards)
+            {
+                <div class="area-caixa">
+                    <a class="area-card @Escolhida(c.Id)" asp-page-handler="Entrar" asp-route-id="@c.Id">
+                        @* Com logo, o nome não aparece (fica só para leitores de tela); sem logo, aparece o ícone e o nome. *@
+                        <span class="area-logo">
+                            @if (c.Logo is long v) { <img src="@Url.Page("Index", "Logo", new { id = c.Id, v })" alt="" /> }
+                            else { @Icones.Svg("celula", 80) }
+                        </span>
+                        <span class="area-nome @(c.Logo != null ? "visually-hidden" : "")" data-sem-traducao>@c.Nome</span>
+                        @if (Model.Atual == c.Id) { <span class="area-atual">Atual</span> }
+                    </a>
+                    <form method="post" asp-page-handler="Remover" class="area-remover">
+                        <input type="hidden" name="id" value="@c.Id" />
+                        <button type="submit" title="Remover card" aria-label="Remover card @c.Nome">@Icones.Svg("x", 18)</button>
+                    </form>
+                </div>
+            }
+        </div>
+        @* Só aparece depois de esconder algum card com o ×: põe todos de volta. *@
+        @if (Model.Escondidas > 0)
+        {
+            <form method="post" asp-page-handler="Todas" class="areas-mostrar">
+                <button type="submit">@Icones.Svg("retornar", 16) Mostrar todas as áreas</button>
+            </form>
+        }
+    </main>
+
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/traducao.js" asp-append-version="true"></script>
+</body>
+</html>

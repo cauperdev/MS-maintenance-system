@@ -1,0 +1,136 @@
+@page "{id:int?}"
+@model MS.Pages.Cronograma.EditarModel
+@*
+    ============================================================================
+    TELA: CRONOGRAMA — cadastro do plano (visual)  ·  lógica em Editar.cshtml.cs
+    Abas: 1. Geral (equipamento, prédio e localização vindos do equipamento, nome, ordem de trabalho, periodicidade, datas, lembrete)
+          2. Tarefas do plano (checklist que a OS recebe)
+    Botões no fim: Salvar · Salvar e adicionar outro · Salvar e continuar editando · Remover.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Cronograma";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Cronograma";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = Model.Plano.Id > 0 ? $"{Model.Plano.Nome} ({Model.CodigoEquip})" : "Adicionar";
+    var ro = !Model.PodeEditar;
+}
+<form method="post" class="form-layout">
+    <input type="hidden" id="abaAtiva" name="abaAtiva" value="@Model.AbaAtiva" />
+    <div class="cartao">
+        <ul class="nav abas" role="tablist">
+            <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#aba-geral">General</button></li>
+            <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#aba-tarefas">Tarefas do plano (@Model.Tarefas.Count)</button></li>
+        </ul>
+        <div asp-validation-summary="All" class="text-danger mt-3"></div>
+        <fieldset disabled="@ro" class="tab-content">
+            <div class="tab-pane fade show active painel-form" id="aba-geral">
+                <div class="campo">
+                    <label class="obrig" asp-for="Plano.EquipamentoId">Equipamento</label>
+                    <select class="form-select" asp-for="Plano.EquipamentoId" required data-pesquisa>
+                        <option value="">Selecione…</option>
+                        @foreach (var e in Model.Equipamentos) { <option value="@e.Id" data-local="@e.Localizacao" data-predio="@e.Predio">@e.Descricao</option> }
+                    </select>
+                </div>
+                <div class="campo"><label>Prédio</label><input class="form-control" id="predio" readonly value="@Model.Predio" /></div>
+                <div class="campo"><label>Localização</label><input class="form-control" id="localizacao" readonly value="@Model.Local" /></div>
+                <div class="campo"><label class="obrig" asp-for="Plano.Nome">Nome do plano</label><input class="form-control" asp-for="Plano.Nome" required maxlength="120" style="max-width:320px" /></div>
+                <div class="campo">
+                    <label>Ordem de trabalho</label>
+                    <div>
+                        <input class="form-control" readonly value="@(string.IsNullOrEmpty(Model.Plano.OrdemTrabalho) ? "(gerada ao salvar)" : Model.Plano.OrdemTrabalho)" />
+                        <div class="ajuda">Gerada automaticamente: é o número da OS. Planos do mesmo equipamento e mesmo nome (ex.: a checagem semanal e a mensal) têm o mesmo número.</div>
+                    </div>
+                </div>
+                <div class="campo"><label asp-for="Plano.Descricao">Descrição do serviço</label><textarea class="form-control" asp-for="Plano.Descricao" rows="6" style="max-width:420px"></textarea></div>
+                <div class="campo">
+                    <label class="obrig" asp-for="Plano.Periodicidade">Periodicidade</label>
+                    <div>
+                        <select class="form-select" asp-for="Plano.Periodicidade">
+                            @foreach (var p in Enum.GetValues<Periodicidade>()) { <option value="@p">@p.Nome()</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label class="obrig" for="dataManutencao">Data da manutenção</label>
+                    <input class="form-control" type="date" name="DataManutencao" id="dataManutencao" style="max-width:220px" required
+                           value="@(Model.DataManutencao?.ToString("yyyy-MM-dd"))" data-proxima="#proximaManutencao" data-periodo="#Plano_Periodicidade"
+                           data-inicio-auto="@(Model.Plano.Id == 0 ? Regras.DiasParaComecar.ToString() : null)" />
+                </div>
+                <div class="campo">
+                    <label for="proximaManutencao">Próxima manutenção</label>
+                    <div>
+                        <input class="form-control" type="date" name="ProximaManutencao" id="proximaManutencao" style="max-width:220px"
+                               value="@(Model.ProximaManutencao?.ToString("yyyy-MM-dd"))" />
+                        <div class="ajuda">Calculada automaticamente pela periodicidade — pode ser alterada.</div>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label for="Plano_LembreteDias">Lembrar antes do prazo</label>
+                    <div>
+                        <div style="max-width:220px">
+                            <input class="form-control" type="number" min="0" max="365" step="1" inputmode="numeric" name="Plano.LembreteDias" id="Plano_LembreteDias"
+                                   value="@Model.Plano.LembreteDias" placeholder="dias" />
+                        </div>
+                        @if (Model.Plano.LembreteDias is int diasLembrete && Model.DataManutencao is DateTime dataLembrete)
+                        {
+                            <div class="ajuda"><b>O sino avisa a partir de @dataLembrete.AddDays(-diasLembrete).ToString("dd/MM/yyyy").</b></div>
+                        }
+                        <div class="ajuda">Ex.: 5 = o sino de lembretes (no topo) avisa 5 dias antes da data da manutenção; 0 = no dia. Deixe em branco para não lembrar. Vale para a OS deste plano e acompanha a data a cada ciclo.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade painel-form" id="aba-tarefas">
+                <p class="text-muted small">Checklist que vai para as ordens de serviço. Na OS o texto fica travado: o técnico só marca "Concluída".</p>
+                <div id="listaTarefas">
+                    @foreach (var t in Model.Tarefas)
+                    {
+                        <div class="tarefa-plano">
+                            <textarea class="form-control" name="Tarefas" rows="2" maxlength="500">@t</textarea>
+                            @if (!ro) { <button type="button" class="btn btn-outline-danger" data-remover-linha=".tarefa-plano" title="Remover tarefa">@Icones.Svg("x", 16)</button> }
+                        </div>
+                    }
+                </div>
+                @if (!ro)
+                {
+                    <button type="button" class="btn-ms b-azul mt-2" data-adicionar="tplTarefa" data-destino="listaTarefas">@Icones.Svg("mais") Adicionar tarefa</button>
+                }
+            </div>
+        </fieldset>
+    </div>
+    <div class="lado">
+        @if (!ro)
+        {
+            <button class="btn-ms b-verde" name="acao" value="salvar">Salvar</button>
+            <button class="btn-ms b-azul" name="acao" value="outro">Salvar e adicionar outro(a)</button>
+            <button class="btn-ms b-azul" name="acao" value="continuar">Salvar e continuar editando</button>
+            @if (Model.Plano.Id > 0)
+            {
+                <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-confirmar="Remover este plano? As OS dele (e as finalizações dessas OS) também serão apagadas." formnovalidate>Remover</button>
+            }
+        }
+        @if (Model.Plano.Id > 0)
+        {
+            <div class="sep"></div>
+            <a class="btn-ms b-cinza" asp-page="/Historico/Index" asp-route-entidade="Plano" asp-route-id="@Model.Plano.Id">Histórico</a>
+        }
+    </div>
+</form>
+
+<template id="tplTarefa">
+    <div class="tarefa-plano">
+        <textarea class="form-control" name="Tarefas" rows="2" maxlength="500"></textarea>
+        <button type="button" class="btn btn-outline-danger" data-remover-linha=".tarefa-plano" title="Remover tarefa">@Icones.Svg("x", 16)</button>
+    </div>
+</template>
+
+@section Scripts {
+    <script>
+        const sel = document.getElementById('Plano_EquipamentoId');
+        sel?.addEventListener('change', () => {
+            document.getElementById('localizacao').value = sel.selectedOptions[0]?.dataset.local ?? '';
+            document.getElementById('predio').value = sel.selectedOptions[0]?.dataset.predio || (sel.value ? '-' : '');
+        });
+    </script>
+}

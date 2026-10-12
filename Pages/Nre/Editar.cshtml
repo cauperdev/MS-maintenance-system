@@ -1,0 +1,605 @@
+@page "{id:int?}"
+@model MS.Pages.Nre.EditarModel
+@*
+    ============================================================================
+    TELA: NRE — abrir / acompanhar (visual)  ·  lógica em Editar.cshtml.cs
+    Como as planilhas de NRE da Samsung, uma aba por planilha (sem misturar): cabeçalho (número, título, status e as
+    informações principais) + 4 abas:
+      Resumo ...... PLANILHA AZUL (uma linha por NRE): no alto os campos dela, na ordem das colunas (data da aprovação,
+                    modelo, item/projeto, valor aprovado, Ptax, aprovador, NRE Order — Evidência e PO saíram da tela a
+                    pedido do usuário; o que já estava gravado fica no banco e na Extração) e, em cinza, as
+                    fórmulas dela: Final Amount = aprovado × Ptax, Taxas = Final Amount × 9,3871094945943%, Final Amount +
+                    Taxas; embaixo as contas: 4 números (aprovado US$, Final Amount, taxas, total a cobrar — sem frete: a
+                    planilha azul não tem), aviso de diferença e tabela por DI/NF (a aba "Summary"). O "Andamento" (linha
+                    do tempo do status) saiu a pedido do usuário; o status fica na pílula do cabeçalho.
+      Detalhado ... PLANILHA AMARELA: um bloco por DI ou compra nacional (_BlocoNre / _ItemNre) e o Fechamento
+      Máquina e descrição (id aba-dados) ... só no sistema: equipamento, área, tipo e descrição
+      Arquivos .... agrupados por tipo (Invoice, DI, NF, outros)
+    Botões ao lado: Salvar (Abrir NRE, se nova) · Salvar e continuar editando · Baixar resumo · Marcar como comprada ·
+    Marcar como cobrada · Concluir · Remover · Histórico. Sem "Aprovar" e sem "Recusar" (pedido do usuário; o
+    OnPostAprovarAsync e o OnPostRecusarAsync ficaram no .cs, sem botão). As contas enquanto digita: script no fim
+    (as mesmas de Modelos/Entidades.cs).
+    ============================================================================
+*@
+@{
+    var n = Model.Registro;      // a NRE salva (status, número, datas, arquivos)
+    var v = Model.Visao;         // o que foi digitado: Resumo, Detalhado e Fechamento
+    ViewData["Title"] = "NRE";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "NRE";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = Model.Novo ? "Abrir NRE" : n.Numero;
+    var editavel = Model.PodeEditar && n.Editavel;                    // equipamento, área, tipo e descrição
+    var compra = Model.PodeEditar && n.Status != StatusNre.Concluida; // o resto (Detalhado, aprovação, fechamento...)
+    var editandoBlocos = Model.Novo || !ViewData.ModelState.IsValid;  // nova ou voltou com erro: blocos já abertos para digitar
+    var aba = Model.Aba ?? "#aba-resumo";
+    string Ativa(string a) => aba == a ? " show active" : "";
+    string BotaoAtivo(string a) => aba == a ? " active" : "";
+    var linhas = ResumoNre.Linhas(v);
+    var aprovado = v.AprovadoUsdResumo();
+    var dif = v.DiferencaUsd();
+    var custo = v.Total();
+    var custoTaxas = v.Remessas.Sum(r => r.Taxas(v.Taxa));
+    string Pct(decimal x, decimal sobre) => sobre > 0 ? (Math.Abs(x) / sobre * 100).ToString("0") + "%" : "";
+}
+<form method="post" class="form-layout" id="formNre" enctype="multipart/form-data">
+    <input type="hidden" asp-for="Registro.OrdemServicoId" />
+    <input type="hidden" asp-for="Registro.EquipamentoId" />
+    <input type="hidden" id="abaAtiva" name="Aba" value="@aba" />
+    <div>
+        <div asp-validation-summary="All" class="text-danger"></div>
+
+        @* ---------- cabeçalho ---------- *@
+        <div class="cartao nre-cab">
+            <div class="topo-cab">
+                <div class="titulo">
+                    @if (!Model.Novo) { <span class="numero">@n.Numero</span> }
+                    @(n.Titulo ?? (Model.Novo ? "Nova NRE" : n.Maquina ?? "Sem título"))
+                </div>
+                @if (!Model.Novo) { <span class="pilula @n.Status.Css()">@n.Status.Nome()</span> }
+            </div>
+            @if (!Model.Novo)
+            {
+                <div class="chips">
+                    <span class="chip">Modelo <b>@(n.Modelo ?? "—")</b></span>
+                    <span class="chip">NRE Order <b>@(n.CodigoNre ?? "—")</b></span>
+                    <span class="chip">Área <b>@(n.Celula?.Nome ?? "—")</b></span>
+                    @if (n.AprovadaClienteEm != null || n.Aprovador != null)
+                    {
+                        <span class="chip">Aprovada @if (n.AprovadaClienteEm != null) { <b>@n.AprovadaClienteEm.Value.ToString("dd/MM/yyyy")</b> } @if (n.Aprovador != null) { <text>por</text> <b>@n.Aprovador</b> }</span>
+                    }
+                    <span class="chip">Aberta <b>@n.CriadaEm.ToString("dd/MM/yyyy")</b> por <b>@(n.Solicitante?.NomeCompleto ?? "—")</b></span>
+                    @if (n.OrdemServico != null) { <a class="chip" asp-page="/Ordens/Editar" asp-route-id="@n.OrdemServicoId">OS <b>@n.OrdemServico.Numero</b></a> }
+                </div>
+            }
+            @if (n.Status == StatusNre.Recusada && n.MotivoRecusa != null)
+            {
+                <div class="alert alert-danger py-2 mt-2 mb-0">Motivo da recusa: @n.MotivoRecusa</div>
+            }
+            @if (n.Status == StatusNre.Recusada && editavel)
+            {
+                <div class="alert alert-warning py-2 mt-2 mb-0">Corrija o que foi pedido e clique em Salvar: a NRE volta para aprovação.</div>
+            }
+        </div>
+
+        <ul class="nav abas mb-0" role="tablist">
+            <li class="nav-item"><button type="button" class="nav-link@(BotaoAtivo("#aba-resumo"))" data-bs-toggle="tab" data-bs-target="#aba-resumo"><span class="marca azul"></span>Resumo</button></li>
+            <li class="nav-item"><button type="button" class="nav-link@(BotaoAtivo("#aba-detalhado"))" data-bs-toggle="tab" data-bs-target="#aba-detalhado"><span class="marca amarela"></span>Detalhado</button></li>
+            <li class="nav-item"><button type="button" class="nav-link@(BotaoAtivo("#aba-dados"))" data-bs-toggle="tab" data-bs-target="#aba-dados">Máquina e descrição</button></li>
+            <li class="nav-item"><button type="button" class="nav-link@(BotaoAtivo("#aba-arquivos"))" data-bs-toggle="tab" data-bs-target="#aba-arquivos">Arquivos (@n.Anexos.Count)</button></li>
+        </ul>
+        <div class="tab-content">
+
+            @* ---------- RESUMO = PLANILHA AZUL: no alto o que se digita (na ordem das colunas dela); embaixo as contas ---------- *@
+            <div class="tab-pane fade cartao aba-conteudo@(Ativa("#aba-resumo"))" id="aba-resumo">
+                <div class="faixa-planilha azul"><span class="marca azul"></span><b>Planilha azul · Resumo</b>
+                    <span class="leve">uma linha por NRE — digite aqui o que está na planilha azul; as contas ficam embaixo</span></div>
+                <fieldset disabled="@(!compra)">
+                    @* Cada campo com o nome da coluna da planilha azul embaixo (em cinza). Taxas, Final Amount + Taxes e
+                       Status a planilha calcula: aqui também (cartões abaixo e o status da NRE). *@
+                    <div class="grade-planilha">
+                        <div><label for="Registro_AprovadaClienteEm">Data da aprovação <span class="col">Approval Date</span></label>
+                            <input class="form-control" asp-for="Registro.AprovadaClienteEm" type="date" /></div>
+                        <div><label for="Registro_Modelo">Modelo <span class="col">Model</span></label>
+                            <input class="form-control" asp-for="Registro.Modelo" maxlength="60" placeholder="Ex.: A075" /></div>
+                        <div class="larga"><label for="Registro_Titulo">Item / Projeto <span class="col">Item / Project</span></label>
+                            <input class="form-control" asp-for="Registro.Titulo" maxlength="200" placeholder="Ex.: Mobile Samsung - SMD Project A075" /></div>
+                        <div><label for="AprovadoUsd">Valor aprovado (US$) <span class="col">Approved Value</span></label>
+                            <input class="form-control" id="AprovadoUsd" name="AprovadoUsd" value="@Model.AprovadoUsd" inputmode="decimal" placeholder="Ex.: 5.594,88" /></div>
+                        <div><label for="PtaxAprovacao">Ptax</label>
+                            <input class="form-control" id="PtaxAprovacao" name="PtaxAprovacao" value="@Model.PtaxAprovacao" inputmode="decimal" placeholder="Ex.: 5,56" /></div>
+                        @* Final Amount: calculado (valor aprovado × Ptax), não se digita — sem name, o servidor faz a mesma conta. *@
+                        <div><label for="ValorAprovado">Final Amount (R$) <span class="col">Final Amount</span></label>
+                            <input class="form-control calculado" id="ValorAprovado" value="@(v.ValorAprovado?.ToString("N2"))" readonly tabindex="-1"
+                                   placeholder="valor aprovado × Ptax" title="Calculado: valor aprovado × Ptax" /></div>
+                        @* As duas contas seguintes da planilha azul: =G3*9.3871094945943% e =G3+H3 (calculadas, não se digitam). *@
+                        <div><label for="TaxasAprovacao">Taxas (R$) <span class="col">Pis/Cofins, CSLL, R&amp;D Tax</span></label>
+                            <input class="form-control calculado" id="TaxasAprovacao" value="@(v.TaxasPrevistas()?.ToString("N2"))" readonly tabindex="-1"
+                                   placeholder="Final Amount × @v.Taxa.ToString("0.####")%" title="Calculado: Final Amount × @v.Taxa.ToString("0.####")%" /></div>
+                        <div><label for="TotalAprovacao">Final Amount + Taxas (R$) <span class="col">Final Amount + Taxes</span></label>
+                            <input class="form-control calculado" id="TotalAprovacao" value="@(v.TotalPrevisto()?.ToString("N2"))" readonly tabindex="-1"
+                                   placeholder="Final Amount + taxas" title="Calculado: Final Amount + taxas" /></div>
+                        <div><label for="Registro_Aprovador">Aprovador <span class="col">Approver</span></label>
+                            <input class="form-control" asp-for="Registro.Aprovador" maxlength="120" placeholder="Ex.: Sergani/Célio" /></div>
+                        <div><label for="Registro_CodigoNre">NRE Order <span class="col">NRE Orders</span></label>
+                            <input class="form-control" asp-for="Registro.CodigoNre" maxlength="60" placeholder="Ex.: 122001004722" /></div>
+                    </div>
+                    <div class="ajuda">Em cinza o sistema calcula, como as fórmulas da planilha: Final Amount = valor aprovado × Ptax · Taxas = Final Amount × @v.Taxa.ToString("0.####")% · Final Amount + Taxas.</div>
+                </fieldset>
+
+                <h6 class="titulo-doc">Contas <span class="leve">— o sistema calcula</span></h6>
+                <div class="kpis-resumo">
+                    <div class="kpi"><div class="valor" data-r="aprovado">@(aprovado?.Dolares() ?? "—")</div><div class="rotulo">Aprovado</div>
+                        <div class="sub" data-r="aprovado-sub">@(v.AprovadoUsd != null ? "valor aprovado" : v.TemDetalhe ? "soma dos itens" : "preencha acima")</div></div>
+                    <div class="kpi"><div class="valor" data-r="final">@v.FinalAmount().Reais()</div><div class="rotulo">Final Amount</div>
+                        <div class="sub" data-r="final-sub">@(v.TemDetalhe ? "itens + frete + seguro × PTAX" : "previsto na aprovação")</div></div>
+                    <div class="kpi"><div class="valor" data-r="taxas">@v.TaxasReais().Reais()</div><div class="rotulo">Taxas</div>
+                        <div class="sub">Pis/Cofins, CSLL, R&amp;D · <span data-r="taxa">@v.Taxa.ToString("0.####")</span>%</div></div>
+                    <div class="kpi destaque"><div class="valor" data-r="total">@v.TotalCobrar().Reais()</div><div class="rotulo">Total a cobrar</div>
+                        <div class="sub">Final Amount + taxas</div></div>
+                </div>
+                <div class="alerta-dif" data-r="alerta" hidden="@(dif is null || dif == 0)">
+                    <span class="ic" data-r="alerta-ic">@(dif < 0 ? "▼" : "▲")</span>
+                    <div data-r="alerta-texto">
+                        @if (dif is decimal d && d != 0)
+                        {
+                            <b>@Math.Abs(d).Dolares() @(d > 0 ? "acima" : "abaixo") do aprovado (@Pct(d, aprovado ?? 0))</b>
+                            @if (v.FreteSeguroUsd() > 0) { <text> · frete + seguro: @v.FreteSeguroUsd().Dolares()</text> }
+                            @if (v.CustoAbsorvido is decimal ca) { <text> · custo absorvido pela empresa: @ca.Reais()@(ca == 0 ? " (o cliente paga a diferença)" : "")</text> }
+                            @if (v.MotivoDiferenca != null) { <text> · @v.MotivoDiferenca</text> }
+                        }
+                    </div>
+                </div>
+                <div class="alert alert-warning py-2" data-r="ptax-pendente" hidden="@(!v.PtaxPendente)">Há DI sem PTAX: os reais dela ainda não entram nas contas (preencha no Detalhado).</div>
+
+                <h6 class="titulo-doc">Por DI / NF <span class="leve">— como a aba Summary da planilha</span></h6>
+                <div class="rolagem">
+                    <table class="tabela sem-zebra resumo-di">
+                        <thead>
+                            <tr><th class="esq">DI / NF</th><th class="esq">Invoice</th><th class="dir">Aprovado<br />(US$)</th><th class="dir">Frete + seguro<br />(US$)</th>
+                                <th class="dir">Ptax</th><th class="dir">Final Amount<br />(R$)</th><th class="dir">Taxas<br />(R$)</th><th class="dir">Total<br />(R$)</th></tr>
+                        </thead>
+                        <tbody data-r="linhas">
+                            @foreach (var l in linhas)
+                            {
+                                <tr class="@(l.Previsao ? "previsao" : "")">
+                                    <td class="esq"><b>@l.Rotulo</b></td><td class="esq">@(l.Invoice ?? "—")</td>
+                                    <td class="dir">@(l.AprovadoUsd?.ToString("N2") ?? "—")</td><td class="dir">@(l.FreteSeguroUsd > 0 ? l.FreteSeguroUsd.ToString("N2") : "—")</td>
+                                    <td class="dir">@(l.Ptax?.Ptax() ?? "—")</td>
+                                    <td class="dir">@(l.PtaxPendente ? "PTAX pendente" : l.FinalReais?.ToString("N2") ?? "—")</td>
+                                    <td class="dir">@(l.Taxas?.ToString("N2") ?? "—")</td><td class="dir"><b>@(l.Total?.ToString("N2") ?? "—")</b></td>
+                                </tr>
+                            }
+                            @if (linhas.Count == 0)
+                            {
+                                <tr><td colspan="8" class="text-muted">Nada registrado ainda: preencha o Valor aprovado acima ou o Detalhado.</td></tr>
+                            }
+                        </tbody>
+                        <tfoot data-r="rodape">
+                            @if (linhas.Count > 1)
+                            {
+                                <tr class="total"><td class="esq" colspan="2">Total</td><td class="dir">@linhas.Sum(l => l.AprovadoUsd ?? 0).ToString("N2")</td>
+                                    <td class="dir">@linhas.Sum(l => l.FreteSeguroUsd).ToString("N2")</td><td></td><td class="dir">@linhas.Sum(l => l.FinalReais ?? 0).ToString("N2")</td>
+                                    <td class="dir">@linhas.Sum(l => l.Taxas ?? 0).ToString("N2")</td><td class="dir">@linhas.Sum(l => l.Total ?? 0).ToString("N2")</td></tr>
+                            }
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            @* ---------- DETALHADO = PLANILHA AMARELA (o que aconteceu: um bloco por DI / compra nacional) ---------- *@
+            <div class="tab-pane fade cartao aba-conteudo@(Ativa("#aba-detalhado"))" id="aba-detalhado">
+                <div class="faixa-planilha amarela"><span class="marca amarela"></span><b>Planilha amarela · Detalhado</b>
+                    <span class="leve">um bloco por DI ou compra nacional, com os itens, e o fechamento no fim</span></div>
+                <fieldset disabled="@(!compra)">
+                    <div id="listaRemessas">
+                        @for (var i = 0; i < Model.Remessas.Count; i++)
+                        {
+                            <partial name="_BlocoNre" model="new MS.Pages.Nre.EditarModel.BlocoVisao(i, Model.Remessas[i], v.Remessas[i], editandoBlocos, compra)" />
+                        }
+                    </div>
+                    <p class="text-muted" id="semRemessa" hidden="@(Model.Remessas.Count > 0)">Nenhuma DI ou compra registrada ainda.</p>
+                    @if (compra)
+                    {
+                        <div class="botoes-remessa">
+                            <button type="button" class="btn-ms b-azul" data-nova-remessa="tplRemessaImp">@Icones.Svg("mais", 16) Adicionar DI (importação)</button>
+                            <button type="button" class="btn-ms b-azul" data-nova-remessa="tplRemessaNac">@Icones.Svg("mais", 16) Adicionar compra nacional (NF)</button>
+                        </div>
+                    }
+
+                    <h6 class="titulo-doc">Fechamento</h6>
+                    <div class="fechamento">
+                        <div class="fech-caixa">
+                            <div class="linha"><span>R$ Total NF (custo real)</span><b data-r="custo">@custo.Reais()</b></div>
+                            <div class="linha"><span>Pis/Cofins, CSLL, R&amp;D
+                                <input class="form-control form-control-sm num taxa-campo" id="TaxaPercentual" name="TaxaPercentual" value="@Model.TaxaPercentual"
+                                       placeholder="@Modelos.Nre.TaxaPadrao.ToString("0.####")" inputmode="decimal" aria-label="Taxa (%)" /> %</span><b data-r="custo-taxas">@custoTaxas.Reais()</b></div>
+                            <div class="linha forte"><span>VALOR TOTAL DA NF</span><span data-r="custo-total">@((custo + custoTaxas).Reais())</span></div>
+                        </div>
+                        <div class="fech-caixa">
+                            <div class="linha"><span>Aprovado</span><b data-r="fech-aprovado">@(aprovado?.Dolares() ?? "—")</b></div>
+                            <div class="linha"><span>Real (itens + frete + seguro)</span><b data-r="fech-real">@(v.TemDetalhe ? v.RealUsd().Dolares() : "—")</b></div>
+                            <div class="linha"><span>Diferença</span><b data-r="fech-dif" class="@(dif > 0 ? "st-andamento" : dif < 0 ? "st-ok" : "")">@(dif is decimal dd ? (dd == 0 ? "nenhuma" : $"{Math.Abs(dd).Dolares()} {(dd > 0 ? "acima" : "abaixo")}") : "—")</b></div>
+                            <div class="linha"><label for="CustoAbsorvido">Custo absorvido pela empresa (R$)</label>
+                                <input class="form-control form-control-sm num curto" id="CustoAbsorvido" name="CustoAbsorvido" value="@Model.CustoAbsorvido" placeholder="0,00" inputmode="decimal" /></div>
+                            <div class="linha-campo"><label for="Registro_MotivoDiferenca">Motivo da diferença</label>
+                                <input class="form-control form-control-sm" asp-for="Registro.MotivoDiferenca" maxlength="300" placeholder="Ex.: frete e seguro das DIs não estavam no aprovado" /></div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            @* ---------- MÁQUINA E DESCRIÇÃO (só no sistema, não está nas planilhas; id aba-dados mantido) ---------- *@
+            <div class="tab-pane fade cartao aba-conteudo@(Ativa("#aba-dados"))" id="aba-dados">
+                <div class="faixa-planilha cinza"><b>Máquina e descrição</b>
+                    <span class="leve">só no sistema, não está nas planilhas · mudam até concluir a NRE</span></div>
+                <fieldset disabled="@(!editavel)">
+                    @* Equipamento = tipo de máquina (só o nome, sem código; lista sem repetir; pode digitar outro ou deixar vazio).
+                       data-pesquisa: clicar abre a lista e digitar filtra (interacoes.js seção 12, texto livre).
+                       A máquina exata, quando a NRE veio da OS ou do cadastro dela, vai escondida (EquipamentoId, no alto). *@
+                    <div class="campo">
+                        <label for="Registro_Maquina">Equipamento</label>
+                        <div>
+                            <input class="form-control" asp-for="Registro.Maquina" list="tiposMaquina" data-pesquisa maxlength="120" autocomplete="off" placeholder="Ex.: ADESIVADORA" />
+                            <datalist id="tiposMaquina">@foreach (var t in Model.TiposDeMaquina) { <option value="@t"></option> }</datalist>
+                            <div class="ajuda">Tipo da máquina: clique para ver a lista ou digite para pesquisar. Pode deixar em branco se a NRE não for de uma máquina.</div>
+                        </div>
+                    </div>
+                    <div class="campo">
+                        <label for="Registro_CelulaId">Área (cliente)</label>
+                        <select class="form-select" asp-for="Registro.CelulaId" asp-items="@(new SelectList(Model.Celulas, "Id", "Nome"))"><option value="">—</option></select>
+                    </div>
+                    <div class="campo">
+                        <label class="obrig" for="Registro_Tipo">Tipo</label>
+                        <select class="form-select" asp-for="Registro.Tipo">
+                            @foreach (var t in Enum.GetValues<TipoNre>()) { <option value="@t">@t.Nome()</option> }
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label class="obrig" for="Registro_Descricao">Descrição</label>
+                        <div>
+                            <textarea class="form-control" asp-for="Registro.Descricao" rows="3" required maxlength="1000"></textarea>
+                            <div class="ajuda">O que precisa e por quê (ex.: correia rompida, máquina parada; sem a troca a linha não produz).</div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            @* ---------- ARQUIVOS (ficam guardados até alguém remover — Servicos/Anexos.cs) ---------- *@
+            <div class="tab-pane fade cartao aba-conteudo@(Ativa("#aba-arquivos"))" id="aba-arquivos">
+                @foreach (var (tipo, titulo) in new[] { (TipoAnexoNre.Invoice, "Invoices"), (TipoAnexoNre.Di, "DIs"), (TipoAnexoNre.NotaFiscal, "NF"), (TipoAnexoNre.Outro, "Outros (aprovação, e-mails, orçamento...)") })
+                {
+                    var doTipo = n.Anexos.Where(a => a.Tipo == tipo).OrderBy(a => a.EnviadoEm).ToList();
+                    if (doTipo.Count == 0) { continue; }
+                    <div class="grupo-arq">
+                        <h6>@titulo</h6>
+                        <ul class="anexos">
+                            @foreach (var a in doTipo)
+                            {
+                                <li>
+                                    <a class="anexo-nome" data-normal target="_blank" href="@Url.Page("Editar", "Anexo", new { id = n.Id, anexo = a.Id })">@Icones.Svg("arquivo", 16) @a.Nome</a>
+                                    <span class="anexo-info">@Anexos.Tamanho(a.Tamanho) · @a.EnviadoPor · @a.EnviadoEm.Data()</span>
+                                    @if (Model.PodeEditar)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger anexo-x" asp-page-handler="RemoverAnexo" asp-route-id="@n.Id" asp-route-anexo="@a.Id"
+                                                formnovalidate title="Remover arquivo" data-confirmar="Remover o arquivo @a.Nome?">@Icones.Svg("x", 14)</button>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+                @if (!n.Anexos.Any()) { <p class="text-muted">Nenhum arquivo ainda.</p> }
+                @if (Model.PodeEditar)
+                {
+                    <h6 class="titulo-doc">Anexar</h6>
+                    <div class="anexo-envio">
+                        <select class="form-select tipo-anexo" name="TipoAnexo" aria-label="Tipo do arquivo">
+                            @foreach (var t in new[] { TipoAnexoNre.Invoice, TipoAnexoNre.Di, TipoAnexoNre.NotaFiscal, TipoAnexoNre.Outro })
+                            {
+                                <option value="@t" selected="@(t == Model.TipoAnexo)">@t.Nome()</option>
+                            }
+                        </select>
+                        <input class="form-control" type="file" name="NovosAnexos" id="NovosAnexos" multiple accept="@string.Join(",", Anexos.Extensoes)" aria-label="Arquivos" />
+                        @if (!Model.Novo)
+                        {
+                            <button class="btn-ms b-azul" asp-page-handler="Anexar" asp-route-id="@n.Id" formnovalidate>@Icones.Svg("enviar", 16) Anexar</button>
+                        }
+                    </div>
+                    <div class="ajuda">Escolha o tipo (Invoice, DI, NF ou outro) e os arquivos — pode escolher vários de uma vez (PDF, Excel, Word, imagem, e-mail do Outlook). Até @(Anexos.TamanhoMaximo / 1024 / 1024) MB cada.@(Model.Novo ? " Eles entram junto ao clicar em Abrir NRE." : "")</div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="lado">
+        @if (editavel || compra)
+        {
+            <button class="btn-ms b-verde" name="acao" value="salvar">@(Model.Novo ? "Abrir NRE" : "Salvar")</button>
+            <button class="btn-ms b-azul" name="acao" value="continuar">Salvar e continuar editando</button>
+        }
+        @if (!Model.Novo)
+        {
+            <a class="btn-ms b-azul" href="@Url.Page("Editar", "Resumo", new { id = n.Id })">@Icones.Svg("baixar", 16) Baixar resumo (Excel)</a>
+        }
+        @* Sem etapa de aprovação (pedido do usuário): os passos já valem com a NRE aguardando aprovação. *@
+        @if (!Model.Novo && Model.PodeEditar && n.Status is StatusNre.Aberta or StatusNre.Aprovada or StatusNre.EmAndamento or StatusNre.Cobrada)
+        {
+            <div class="sep"></div>
+        }
+        @if (!Model.Novo && Model.PodeEditar && n.Status is StatusNre.Aberta or StatusNre.Aprovada)
+        {
+            <button class="btn-ms b-azul" asp-page-handler="Comprar" data-confirmar="Marcar esta NRE como comprada (aguardando chegada)?">Marcar como comprada</button>
+        }
+        @if (!Model.Novo && Model.PodeEditar && n.Status is StatusNre.Aberta or StatusNre.Aprovada or StatusNre.EmAndamento)
+        {
+            <button class="btn-ms b-azul" asp-page-handler="Cobrar" data-confirmar="Marcar esta NRE como cobrada do cliente?">Marcar como cobrada do cliente</button>
+        }
+        @if (!Model.Novo && Model.PodeEditar && n.Status is StatusNre.Aberta or StatusNre.Aprovada or StatusNre.EmAndamento or StatusNre.Cobrada)
+        {
+            <button class="btn-ms b-verde" asp-page-handler="Concluir" data-confirmar="Concluir esta NRE? Depois de concluída ela não muda mais.">@Icones.Svg("ok", 16) Concluir NRE</button>
+        }
+        @if (!Model.Novo && Model.Aprova)
+        {
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-confirmar="Remover esta NRE?" formnovalidate>Remover</button>
+        }
+        @if (!Model.Novo)
+        {
+            <div class="sep"></div>
+            <a class="btn-ms b-cinza" asp-page="/Historico/Index" asp-route-entidade="Nre" asp-route-id="@n.Id">Histórico</a>
+        }
+        @if (n.Id != 0 && n.EquipamentoId != null && Model.Ve("equipamentos"))
+        {
+            <a class="btn-ms b-cinza" asp-page="/Equipamentos/Editar" asp-route-id="@n.EquipamentoId">@Icones.Svg("equipamento", 16) Ver máquina</a>
+        }
+    </div>
+</form>
+
+@* Modelos dos botões "Adicionar DI / compra nacional" e "+ Item" (a linha nova sai daqui). *@
+<template id="tplRemessaImp"><partial name="_BlocoNre" model="Model.BlocoVazio(TipoRemessa.Importacao)" /></template>
+<template id="tplRemessaNac"><partial name="_BlocoNre" model="Model.BlocoVazio(TipoRemessa.Nacional)" /></template>
+<template id="tplItemImp"><partial name="_ItemNre" model="Model.ItemVazio(TipoRemessa.Importacao)" /></template>
+<template id="tplItemNac"><partial name="_ItemNre" model="Model.ItemVazio(TipoRemessa.Nacional)" /></template>
+
+@section Scripts {
+    <script>
+        // ===== NRE: contas enquanto digita (as mesmas de Modelos/Entidades.cs: Nre e NreRemessa) e os blocos do Detalhado =====
+        (function () {
+            const form = document.getElementById('formNre');
+            const lista = document.getElementById('listaRemessas');
+            const taxaPadrao = @Modelos.Nre.TaxaPadrao.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            const t = s => window.msT ? msT(s) : s;
+
+            // Números como o servidor: dinheiro aceita 198.327,26 e 198,327.26 (o último separador com 1 ou 2 dígitos é o
+            // dos centavos); PTAX e % usam vírgula ou ponto como decimal; quantidade vazia vale 1.
+            function dinheiro(texto) {
+                let s = (texto || '').replace(/[^\d.,]/g, '');
+                if (!s) return null;
+                const u = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'));
+                const casas = u < 0 ? 0 : s.length - u - 1;
+                s = casas === 1 || casas === 2 ? s.slice(0, u).replace(/[.,]/g, '') + '.' + s.slice(u + 1) : s.replace(/[.,]/g, '');
+                const v = parseFloat(s);
+                return isNaN(v) ? null : v;
+            }
+            function decimal4(texto) {
+                const s = (texto || '').replace(/[^\d.,]/g, '').replace(',', '.');
+                if (!s) return null;
+                const v = parseFloat(s);
+                return isNaN(v) ? null : v;
+            }
+            function quantidade(texto) {
+                const v = parseFloat((texto || '').replace(',', '.'));
+                return isNaN(v) || v < 0 ? 1 : v;
+            }
+            const c2 = v => Math.round((v + Math.sign(v) * 1e-9) * 100) / 100 + 0;   // centavos (meio para cima); + 0: nunca "-0"
+            const fmt = (v, min = 2, max = min) => v.toLocaleString('pt-BR', { minimumFractionDigits: min, maximumFractionDigits: max });
+            const ptaxTxt = v => fmt(v, 2, 4);
+            const reais = v => 'R$ ' + fmt(v);
+            const dolares = v => 'US$ ' + fmt(v);
+            const soma = (lista, f) => lista.reduce((a, x) => a + f(x), 0);
+            const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+            const campo = (raiz, nome) => raiz.querySelector(`[data-campo="${nome}"]`);
+            const valor = (raiz, nome) => campo(raiz, nome)?.value ?? '';
+            const por = (raiz, nome) => raiz.querySelector(`[data-r="${nome}"]`);
+            const escrever = (raiz, calc, texto) => { const el = raiz.querySelector(`[data-calc="${calc}"]`); if (el) el.textContent = texto; };
+            const ver = (raiz, nome, texto) => { const el = raiz.querySelector(`[data-ver="${nome}"]`); if (el) el.textContent = texto; };
+            const vazio = s => (s || '').trim() || '—';
+
+            // Um bloco (DI ou compra nacional): atualiza as linhas, o subtotal e o cabeçalho em leitura; devolve os números.
+            function calcularBloco(b) {
+                const imp = b.dataset.tipo === 'Importacao';
+                const ptax = decimal4(valor(b, 'Ptax'));
+                let itensUsd = 0, brl = 0, pendente = false;
+                b.querySelectorAll('[data-item]').forEach(tr => {
+                    const qtd = quantidade(valor(tr, 'Quantidade'));
+                    ver(tr, 'Codigo', vazio(valor(tr, 'Codigo')));
+                    ver(tr, 'Descricao', valor(tr, 'Descricao'));
+                    ver(tr, 'Quantidade', valor(tr, 'Quantidade'));
+                    if (imp) {
+                        const unit = dinheiro(valor(tr, 'ValorUnitarioUsd'));
+                        ver(tr, 'ValorUnitarioUsd', unit == null ? '' : fmt(unit));
+                        let rs;
+                        if (unit != null) {
+                            const usd = c2(qtd * unit);
+                            itensUsd += usd;
+                            escrever(tr, 'usd', fmt(usd));
+                            if (ptax == null) { rs = null; pendente = true; } else rs = c2(usd * ptax);
+                        } else {
+                            escrever(tr, 'usd', '');
+                            rs = c2(qtd * (dinheiro(valor(tr, 'ValorUnitario')) || 0));   // item antigo, em reais
+                        }
+                        if (rs != null) brl += rs;
+                        escrever(tr, 'brl', rs == null ? '—' : fmt(rs));
+                    } else {
+                        const unit = dinheiro(valor(tr, 'ValorUnitario'));
+                        ver(tr, 'ValorUnitario', unit == null ? '' : fmt(unit));
+                        const rs = c2(qtd * (unit || 0));
+                        brl += rs;
+                        escrever(tr, 'brl', fmt(rs));
+                    }
+                });
+                let fs = 0;
+                if (imp) {
+                    const frete = dinheiro(valor(b, 'Frete')) || 0, seguro = dinheiro(valor(b, 'Seguro')) || 0;
+                    fs = c2(frete + seguro);
+                    if (fs > 0 && ptax == null) pendente = true;
+                    const fr = ptax == null ? null : c2(frete * ptax), sr = ptax == null ? null : c2(seguro * ptax);
+                    brl += (fr || 0) + (sr || 0);
+                    escrever(b, 'frete-usd', fmt(frete)); escrever(b, 'frete-brl', fr == null ? '—' : fmt(fr));
+                    escrever(b, 'seguro-usd', fmt(seguro)); escrever(b, 'seguro-brl', sr == null ? '—' : fmt(sr));
+                    escrever(b, 'sub-usd', fmt(c2(itensUsd + fs)));
+                } else if (ptax) {
+                    itensUsd = c2(brl / ptax);   // dólar de referência
+                }
+                brl = c2(brl);
+                itensUsd = c2(itensUsd);
+                escrever(b, 'sub-brl', pendente ? t('PTAX pendente') : fmt(brl));
+                const numero = imp ? valor(b, 'Di').trim() : valor(b, 'NotaFiscal').trim();
+                const rotulo = (imp ? 'DI ' : 'NF ') + (numero || t('(a definir)'));
+                ver(b, 'rotulo', rotulo);
+                ver(b, 'Invoice', vazio(valor(b, 'Invoice')));
+                ver(b, 'Ptax', ptax == null ? '—' : ptaxTxt(ptax));
+                ver(b, 'Fornecedor', vazio(valor(b, 'Fornecedor')));
+                return { imp, rotulo, invoice: valor(b, 'Invoice').trim(), ptax, itensUsd, fs, brl, pendente };
+            }
+
+            // Tudo: blocos, cartões e tabela do Resumo, aviso de diferença e Fechamento.
+            function calcularTudo() {
+                const blocos = [...lista.querySelectorAll('[data-remessa]')].map(calcularBloco);
+                const taxa = decimal4(document.getElementById('TaxaPercentual')?.value) ?? taxaPadrao;
+                const aprovadoDig = dinheiro(document.getElementById('AprovadoUsd')?.value);
+                const ptaxAprov = decimal4(document.getElementById('PtaxAprovacao')?.value);
+                const absorvido = dinheiro(document.getElementById('CustoAbsorvido')?.value);
+                const motivo = (document.getElementById('Registro_MotivoDiferenca')?.value || '').trim();
+                const temDetalhe = blocos.length > 0;
+                blocos.forEach(x => x.taxas = c2(x.brl * taxa / 100));
+                const custo = c2(soma(blocos, x => x.brl));
+                const custoTaxas = c2(soma(blocos, x => x.taxas));
+                // Final Amount da planilha azul: valor aprovado × Ptax (campo calculado, mostrado enquanto digita)
+                const previsto = aprovadoDig != null && ptaxAprov != null ? c2(aprovadoDig * ptaxAprov) : null;
+                const campoFinal = document.getElementById('ValorAprovado');
+                if (campoFinal) campoFinal.value = previsto == null ? '' : fmt(previsto);
+                // ... e as duas contas seguintes dela: Taxas (=G3*taxa%) e Final Amount + Taxas (=G3+H3)
+                const taxasPrev = previsto == null ? null : c2(previsto * taxa / 100);
+                const campoTaxas = document.getElementById('TaxasAprovacao'), campoTotal = document.getElementById('TotalAprovacao');
+                if (campoTaxas) campoTaxas.value = taxasPrev == null ? '' : fmt(taxasPrev);
+                if (campoTotal) campoTotal.value = taxasPrev == null ? '' : fmt(c2(previsto + taxasPrev));
+                const final = temDetalhe ? custo : (previsto ?? 0);
+                const taxas = temDetalhe ? custoTaxas : c2(final * taxa / 100);
+                const aprovado = aprovadoDig ?? (temDetalhe ? c2(soma(blocos, x => x.itensUsd)) : null);
+                const fs = c2(soma(blocos, x => x.fs));
+                const real = c2(soma(blocos, x => x.itensUsd + x.fs));
+                const dif = temDetalhe && aprovado != null ? c2(real - aprovado) : null;
+
+                // cartões
+                por(document, 'aprovado').textContent = aprovado == null ? '—' : dolares(aprovado);
+                por(document, 'aprovado-sub').textContent = t(aprovadoDig != null ? 'valor aprovado' : temDetalhe ? 'soma dos itens' : 'preencha acima');
+                por(document, 'final').textContent = reais(final);
+                por(document, 'final-sub').textContent = t(temDetalhe ? 'itens + frete + seguro × PTAX' : 'previsto na aprovação');
+                por(document, 'taxas').textContent = reais(taxas);
+                por(document, 'taxa').textContent = fmt(taxa, 0, 4);
+                por(document, 'total').textContent = reais(c2(final + taxas));
+                por(document, 'ptax-pendente').hidden = !blocos.some(x => x.pendente);
+
+                // aviso de diferença
+                const alerta = por(document, 'alerta');
+                alerta.hidden = dif == null || dif === 0;
+                if (!alerta.hidden) {
+                    por(document, 'alerta-ic').textContent = dif < 0 ? '▼' : '▲';
+                    let txt = `<b>${dolares(Math.abs(dif))} ${t(dif > 0 ? 'acima' : 'abaixo')} ${t('do aprovado')}${aprovado > 0 ? ` (${fmt(Math.abs(dif) / aprovado * 100, 0)}%)` : ''}</b>`;
+                    if (fs > 0) txt += ` · ${t('frete + seguro')}: ${dolares(fs)}`;
+                    if (absorvido != null) txt += ` · ${t('custo absorvido pela empresa')}: ${reais(absorvido)}${absorvido === 0 ? ' ' + t('(o cliente paga a diferença)') : ''}`;
+                    if (motivo) txt += ` · ${esc(motivo)}`;
+                    por(document, 'alerta-texto').innerHTML = txt;
+                }
+
+                // tabela "Por DI / NF" (como a aba Summary)
+                let linhas = blocos.map(x => `<tr><td class="esq"><b>${esc(x.rotulo)}</b></td><td class="esq">${esc(x.invoice || '—')}</td>
+                    <td class="dir">${fmt(x.itensUsd)}</td><td class="dir">${x.fs > 0 ? fmt(x.fs) : '—'}</td><td class="dir">${x.ptax == null ? '—' : ptaxTxt(x.ptax)}</td>
+                    <td class="dir">${x.pendente ? t('PTAX pendente') : fmt(x.brl)}</td><td class="dir">${x.pendente ? '—' : fmt(x.taxas)}</td>
+                    <td class="dir"><b>${x.pendente ? '—' : fmt(c2(x.brl + x.taxas))}</b></td></tr>`);
+                if (!temDetalhe && (previsto != null || aprovadoDig != null))
+                    linhas = [`<tr class="previsao"><td class="esq"><b>${t('Previsão (aprovação)')}</b></td><td class="esq">—</td>
+                        <td class="dir">${aprovadoDig == null ? '—' : fmt(aprovadoDig)}</td><td class="dir">—</td><td class="dir">${ptaxAprov == null ? '—' : ptaxTxt(ptaxAprov)}</td>
+                        <td class="dir">${previsto == null ? '—' : fmt(previsto)}</td><td class="dir">${previsto == null ? '—' : fmt(taxas)}</td>
+                        <td class="dir"><b>${previsto == null ? '—' : fmt(c2(previsto + taxas))}</b></td></tr>`];
+                por(document, 'linhas').innerHTML = linhas.length ? linhas.join('')
+                    : `<tr><td colspan="8" class="text-muted">${t('Nada registrado ainda: preencha o Valor aprovado acima ou o Detalhado.')}</td></tr>`;
+                const validos = blocos.filter(x => !x.pendente);
+                por(document, 'rodape').innerHTML = blocos.length > 1 ? `<tr class="total"><td class="esq" colspan="2">${t('Total')}</td>
+                    <td class="dir">${fmt(c2(soma(blocos, x => x.itensUsd)))}</td><td class="dir">${fmt(fs)}</td><td></td>
+                    <td class="dir">${fmt(c2(soma(validos, x => x.brl)))}</td><td class="dir">${fmt(c2(soma(validos, x => x.taxas)))}</td>
+                    <td class="dir">${fmt(c2(soma(validos, x => x.brl + x.taxas)))}</td></tr>` : '';
+
+                // Fechamento
+                por(document, 'custo').textContent = reais(custo);
+                por(document, 'custo-taxas').textContent = reais(custoTaxas);
+                por(document, 'custo-total').textContent = reais(c2(custo + custoTaxas));
+                por(document, 'fech-aprovado').textContent = aprovado == null ? '—' : dolares(aprovado);
+                por(document, 'fech-real').textContent = temDetalhe ? dolares(real) : '—';
+                const fd = por(document, 'fech-dif');
+                fd.textContent = dif == null ? '—' : dif === 0 ? t('nenhuma') : `${dolares(Math.abs(dif))} ${t(dif > 0 ? 'acima' : 'abaixo')}`;
+                fd.className = dif > 0 ? 'st-andamento' : dif < 0 ? 'st-ok' : '';
+                document.getElementById('semRemessa').hidden = temDetalhe;
+            }
+
+            // Digitou: refaz as contas. Saiu do campo de valor: mostra no formato 1.234,56 (PTAX com vírgula).
+            form.addEventListener('input', calcularTudo);
+            form.addEventListener('change', e => {
+                const c = e.target;
+                if (c.matches('[data-campo="ValorUnitarioUsd"], [data-campo="ValorUnitario"], [data-campo="Frete"], [data-campo="Seguro"], #AprovadoUsd, #CustoAbsorvido')) {
+                    const v = dinheiro(c.value);
+                    if (v != null) c.value = fmt(v);
+                } else if (c.matches('[data-campo="Ptax"], #PtaxAprovacao, #TaxaPercentual')) {
+                    const v = decimal4(c.value);
+                    if (v != null) c.value = c.id === 'TaxaPercentual' ? fmt(v, 0, 13) : fmt(v, 2, 4);   // taxa: todas as casas (9,3871094945943)
+                }
+                calcularTudo();
+            });
+
+            // Blocos: Editar / Pronto / tirar; + Item; + DI ou compra nacional.
+            document.addEventListener('click', e => {
+                const b = e.target.closest('[data-remessa]');
+                if (e.target.closest('[data-editar-bloco]')) {
+                    b.classList.add('editando');
+                    b.querySelector('.cab-editar input')?.focus();
+                } else if (e.target.closest('[data-pronto-bloco]')) {
+                    calcularTudo();
+                    b.classList.remove('editando');
+                } else if (e.target.closest('[data-tirar-bloco]')) {
+                    msConfirmar(t('Tirar este bloco (DI ou compra) e os itens dele da NRE? Só vale depois de Salvar.'), { botao: t('Tirar'), classe: 'b-vermelho' })
+                        .then(sim => { if (sim) { b.remove(); calcularTudo(); } });
+                } else if (e.target.closest('[data-mais-item]')) {
+                    const tpl = document.getElementById(b.dataset.tipo === 'Importacao' ? 'tplItemImp' : 'tplItemNac');
+                    const corpo = b.querySelector('[data-itens]');
+                    corpo.appendChild(tpl.content.cloneNode(true));
+                    corpo.lastElementChild.querySelector('input')?.focus();
+                    calcularTudo();
+                } else if (e.target.closest('[data-nova-remessa]')) {
+                    const tpl = document.getElementById(e.target.closest('[data-nova-remessa]').dataset.novaRemessa);
+                    lista.appendChild(tpl.content.cloneNode(true));
+                    lista.lastElementChild.querySelector('.cab-editar input')?.focus();
+                    calcularTudo();
+                } else if (e.target.closest('[data-remover-linha]')) {
+                    setTimeout(calcularTudo);   // interacoes.js tira a linha; depois refaz as contas
+                }
+            });
+
+            // Campo obrigatório vazio em outra aba (ex.: Descrição em Máquina e descrição): abre a aba dele para o aviso aparecer.
+            form.addEventListener('invalid', e => {
+                const painel = e.target.closest('.tab-pane');
+                if (painel && !painel.classList.contains('active'))
+                    bootstrap.Tab.getOrCreateInstance(document.querySelector(`.abas [data-bs-target="#${painel.id}"]`)).show();
+            }, true);
+
+            // Antes de enviar: nomes Remessas[b].Campo e Remessas[b].Itens[i].Campo na ordem da tela (blocos e linhas novas).
+            form.addEventListener('submit', () => {
+                lista.querySelectorAll('[data-remessa]').forEach((bloco, b) => {
+                    bloco.querySelectorAll('[data-campo]').forEach(c => { if (!c.closest('[data-item]')) c.name = `Remessas[${b}].${c.dataset.campo}`; });
+                    bloco.querySelectorAll('[data-item]').forEach((linha, i) =>
+                        linha.querySelectorAll('[data-campo]').forEach(c => c.name = `Remessas[${b}].Itens[${i}].${c.dataset.campo}`));
+                });
+            });
+        })();
+    </script>
+}

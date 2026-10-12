@@ -1,0 +1,23 @@
+@page "{id:int}"
+@model MS.Pages.Ordens.VerModel
+@*
+    ============================================================================
+    TELA: ORDENS DE SERVIÇO — visualização (só leitura)  ·  lógica em Ver.cshtml.cs (VerModel)
+    Botões: Voltar · Editar (se o grupo pode) · Imprimir. A ficha em si está em _OsDetalhe.cshtml.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Ordens de serviço";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Ordens de serviço";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = $"Visualização {Model.Os.Numero}";
+}
+<div class="barra-acoes">
+    <a class="btn-ms b-cinza" asp-page="Index">&larr; Voltar</a>
+    @if (Model.PodeEditar) { <a class="btn-ms b-azul" asp-page="Editar" asp-route-id="@Model.Os.Id">Editar</a> }
+    <a class="btn-ms b-azulclaro" asp-page="Imprimir" asp-route-id="@Model.Os.Id" target="_blank">@Icones.Svg("imprimir", 16) Imprimir</a>
+</div>
+<div class="cartao">
+    <partial name="_OsDetalhe" model="Model.Os" />
+</div>

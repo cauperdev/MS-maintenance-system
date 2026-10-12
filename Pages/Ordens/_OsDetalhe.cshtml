@@ -1,0 +1,60 @@
+@model OrdemServico
+@*
+    ============================================================================
+    FICHA DA OS — pedaço reaproveitado pelas telas Ver e Imprimir.
+    Partes: 1. grade de campos · 2. checklist · 3. peças · 4. fotos antes/depois (não vão na impressão)
+    Cores e tamanhos: estilos.css seção 12.
+    ============================================================================
+*@
+@{
+    var os = Model;
+    var atrasada = os.Atrasada(DateTime.Now);
+}
+@* Ficha da OS (visualização e impressão): campos em grade, rótulo em cima e valor embaixo. *@
+<div class="ficha">
+    <div><span class="rotulo">Número da OS</span><span class="valor"><b>@os.Numero</b></span></div>
+    <div class="duplo"><span class="rotulo">Equipamento</span><span class="valor">@os.Equipamento?.Descricao</span></div>
+    <div><span class="rotulo">Prédio</span><span class="valor">@(os.Equipamento?.Predio is { Length: > 0 } predio ? predio : "-")</span></div>
+    <div><span class="rotulo">Localização</span><span class="valor">@os.Equipamento?.Localizacao</span></div>
+    <div><span class="rotulo">Plano</span><span class="valor">@(os.Plano?.Nome ?? "OS avulsa")</span></div>
+    <div><span class="rotulo">Periodicidade</span><span class="valor">@os.Tipo.Nome()</span></div>
+    <div><span class="rotulo">Status</span><span class="valor">@if (atrasada) { <span class="st-atrasada">Atrasada</span> } else { <span class="@os.Status.Css()">@os.Status.Nome()</span> }</span></div>
+    <div><span class="rotulo">Técnico responsável</span><span class="valor">@(os.Tecnico?.NomeCompleto ?? "-")</span></div>
+    <div><span class="rotulo">Coordenador responsável</span><span class="valor">@(os.Coordenador?.NomeCompleto ?? "-")</span></div>
+    <div><span class="rotulo">Data da manutenção</span><span class="valor">@os.DataConclusao.ToString("dd/MM/yyyy")</span></div>
+    <div><span class="rotulo">Próxima manutenção</span><span class="valor">@Regras.ProximaManutencao(os).ToString("dd/MM/yyyy")</span></div>
+</div>
+
+@{ var tarefas = os.Tarefas.OrderBy(t => t.Ordem).ToList(); }
+<h6 class="titulo-doc">Checklist</h6>
+<table class="tabela-doc">
+    <thead><tr><th class="col-caixa"></th><th>Tarefa</th></tr></thead>
+    <tbody>
+        @for (var i = 0; i < tarefas.Count; i++)
+        {
+            <tr><td class="col-caixa"><span class="caixa @(tarefas[i].Concluida ? "ok" : "")"></span></td><td>@tarefas[i].Descricao</td></tr>
+        }
+        @if (tarefas.Count == 0) { <tr><td colspan="2" class="text-muted">Sem tarefas.</td></tr> }
+    </tbody>
+</table>
+
+@if (os.Pecas.Any())
+{
+    <h6 class="titulo-doc">Peças utilizadas</h6>
+    <table class="tabela-doc">
+        <thead><tr><th class="col-codigo">Código</th><th>Peça</th><th class="col-marca">Qtd.</th></tr></thead>
+        <tbody>@foreach (var p in os.Pecas) { <tr><td class="col-codigo">@(p.Codigo ?? "-")</td><td>@p.Descricao</td><td class="col-marca">@p.Quantidade.ToString("0.##")</td></tr> }</tbody>
+    </table>
+}
+
+@if (os.Imagens.Any() && ViewData["Impressao"] is not true)
+{
+    <h6 class="titulo-doc">Imagens</h6>
+    @foreach (var tipo in new[] { TipoImagem.Antes, TipoImagem.Depois })
+    {
+        var imgs = os.Imagens.Where(i => i.Tipo == tipo).ToList();
+        if (imgs.Count == 0) continue;
+        <div class="small fw-bold">@tipo</div>
+        <div class="galeria mb-2">@foreach (var i in imgs) { <figure><span class="foto-quadro"><img src="/Foto/@i.Id" alt="Foto @tipo" /><span class="foto-hora">@i.Hora().ToString("dd/MM/yyyy HH:mm")</span></span></figure> }</div>
+    }
+}

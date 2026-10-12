@@ -1,0 +1,445 @@
+@*
+    ============================================================================
+    MANUAL DE USO — texto da aba "Manual de uso" da tela Manual (Pages/Manual/Index.cshtml).
+    Uma seção por tela, na ordem do fluxo: para que serve · como usar · regras. Escrito em português (data-sem-traducao:
+    a tradução do topo não mexe no texto do manual).
+    O que muda com o sistema vem do próprio código, para o manual não ficar desatualizado:
+      permissões (Servicos/Acesso.cs, as que estão valendo na tela Grupos) · periodicidades (Modelos/Entidades.cs)
+      · prefixos dos prédios e hora do resumo (appsettings.json) · limites de fotos, anexos, login e prazos.
+    Regra nova ou mudada no sistema? Atualize a seção dela aqui.
+    ============================================================================
+*@
+@inject IConfiguration Config
+@{
+    var grupos = Enum.GetValues<Grupo>();
+    var prefixos = Config.GetSection("PrefixosPredio").GetChildren()
+        .Where(p => !string.IsNullOrWhiteSpace(p.Value) && !string.Equals(p.Key, p.Value, StringComparison.OrdinalIgnoreCase))
+        .Select(p => $"{p.Key.ToUpper()} → {p.Value!.ToUpper()}").ToList();
+    var horaResumo = Config["Email:HoraResumo"] is { Length: > 0 } h ? h : "07:00";
+    var emailEmTeste = !string.IsNullOrWhiteSpace(Config["Email:Teste"]);
+    var pelaRede = Config.GetValue("AD:Ativo", false);
+    var endereco = Config["EnderecoSistema"];
+    string Permissao(Grupo g, Acesso.Modulo m) =>
+        Acesso.PodeEditar(g, m.Chave) && m.TemEditar ? "Vê e edita" : Acesso.PodeVer(g, m.Chave) && m.TemVer ? "Só vê" : "—";
+}
+<div class="manual" data-sem-traducao>
+    <nav class="manual-indice" aria-label="Índice do manual">
+        <a href="#m-visao">1. Visão geral</a>
+        <a href="#m-entrar">2. Entrar no sistema</a>
+        <a href="#m-grupos">3. Grupos e permissões</a>
+        <a href="#m-areas">4. Áreas</a>
+        <a href="#m-usuarios">5. Usuários</a>
+        <a href="#m-equipamentos">6. Equipamentos</a>
+        <a href="#m-cronograma">7. Cronograma</a>
+        <a href="#m-ordens">8. Ordens de serviço</a>
+        <a href="#m-finalizacao">9. Finalização</a>
+        <a href="#m-spare">10. Spare Parts</a>
+        <a href="#m-nre">11. NRE</a>
+        <a href="#m-calendario">12. Calendário</a>
+        <a href="#m-dashboard">13. Dashboard</a>
+        <a href="#m-jms">14. Histórico JMS</a>
+        <a href="#m-avisos">15. Sino e e-mails</a>
+        <a href="#m-historico">16. Histórico das alterações</a>
+        <a href="#m-dicas">17. Excel, celular e idioma</a>
+        <a href="#m-problemas">18. Se algo não funcionar</a>
+    </nav>
+
+    @* ---------------------------------------------------------------- 1 *@
+    <section id="m-visao">
+        <h2>1. Visão geral</h2>
+        <p>O <b>MS (Maintenance System)</b> controla a manutenção preventiva das máquinas, do cadastro da máquina até a
+           aprovação da manutenção feita. Tudo gira em torno da <b>OS (ordem de serviço)</b>: o plano da máquina gera a OS,
+           o técnico executa, o coordenador aprova, e a OS volta sozinha para o próximo ciclo.</p>
+        <ol class="manual-fluxo">
+            <li><b>Cadastro</b><span>Áreas, usuários e máquinas (uma a uma ou por Excel). O código da máquina é gerado sozinho.</span></li>
+            <li><b>Cronograma</b><span>Cada máquina recebe o plano: periodicidade e checklist. Ao salvar, a OS já nasce.</span></li>
+            <li><b>OS gerada</b><span>Data calculada pela periodicidade, nunca no domingo. O sino avisa antes do prazo.</span></li>
+            <li><b>Execução</b><span>Pelo QR code no celular: checklist, peças e fotos de antes e depois.</span></li>
+            <li><b>Finalização</b><span>O coordenador confere a conclusão e as fotos, e aprova ou retorna.</span></li>
+        </ol>
+        <p class="manual-nota"><b>Concluiu:</b> a OS volta sozinha com a data do próximo ciclo. <b>Retornou:</b> volta para o
+           técnico refazer. Em paralelo: <b>Spare Parts</b> (cadastro das peças e histórico de uso de cada código), <b>NRE</b> (gastos não
+           recorrentes cobrados da área), <b>Dashboard</b> e <b>Calendário</b> (acompanhamento) e <b>Histórico JMS</b>
+           (consulta do sistema antigo).</p>
+        <h3>Palavras do sistema</h3>
+        <dl class="manual-termos">
+            <dt>Plano</dt><dd>O que fazer numa máquina e de quanto em quanto tempo (tela Cronograma).</dd>
+            <dt>OS</dt><dd>A ordem de serviço que o técnico executa. Cada plano tem a sua OS, que se repete a cada ciclo.</dd>
+            <dt>Ordem de trabalho</dt><dd>O número da OS (ex.: OS-2026-0001). A semanal e a mensal do mesmo plano da mesma máquina dividem o número.</dd>
+            <dt>Ciclo</dt><dd>Uma execução da OS (ex.: a semanal de 26/09). Cada ciclo concluído vira uma finalização.</dd>
+            <dt>Data da manutenção</dt><dd>O prazo do ciclo. Depois desse dia a OS fica atrasada.</dd>
+            <dt>Finalização</dt><dd>O registro de um ciclo concluído (checklist, peças e fotos), esperando a revisão do coordenador.</dd>
+            <dt>Área</dt><dd>O cliente / célula dono da máquina (ex.: SAMSUNG, AVELL). Define filtros, quem paga a NRE e quem recebe os e-mails.</dd>
+            <dt>NRE</dt><dd>Pedido de gasto não recorrente (peça, serviço, ferramental...) cobrado da área.</dd>
+        </dl>
+    </section>
+
+    @* ---------------------------------------------------------------- 2 *@
+    <section id="m-entrar">
+        <h2>2. Entrar no sistema</h2>
+        <h3>Como usar</h3>
+        <ol>
+            @if (!string.IsNullOrWhiteSpace(endereco))
+            {
+                <li>Abra o endereço do sistema no navegador: <b>@endereco</b> (no celular, conectado ao Wi-Fi da empresa), ou leia o QR code da máquina.</li>
+            }
+            @if (pelaRede)
+            {
+                <li>Entre com a sua <b>matrícula</b> e a <b>senha de rede</b> (a mesma do Windows). O sistema não guarda essa senha: só pergunta à rede da empresa se ela está certa.</li>
+                <li>No primeiro acesso a matrícula é cadastrada sozinha como <b>Visitante</b>. Peça ao administrador para colocar você no grupo certo (Técnico, Coordenador...).</li>
+            }
+            else
+            {
+                <li>Entre com o usuário e a senha cadastrados na tela Usuários.</li>
+            }
+            <li>O sistema abre na primeira tela que o seu grupo pode ver (normalmente o Dashboard). Pelo QR code, ele vai direto para as OS da máquina.</li>
+            <li>No topo: <b>☰</b> abre ou recolhe o menu, o <b>globo</b> troca o idioma, o <b>sino</b> mostra os lembretes e o botão do <b>usuário</b> tem o Sair.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>Depois de <b>@TentativasLogin.Maximo senhas erradas</b> seguidas na mesma matrícula, o login pausa por <b>@TentativasLogin.Pausa.TotalMinutes.ToString("0") minutos</b>. Isso fica abaixo do limite da rede, para ninguém bloquear a conta de Windows de outra pessoa pelo sistema.</li>
+            <li>Matrícula que não existe e senha errada dão a mesma mensagem (o sistema não revela quem tem acesso).</li>
+            <li>O login dura <b>12 horas</b> e se renova enquanto você usa. Abrir a tela de login encerra a sessão aberta naquele navegador.</li>
+            <li>Usuário marcado como inativo não entra.</li>
+            @if (pelaRede)
+            {
+                <li>A <b>conta local</b> (ex.: admin de emergência) entra com a senha do próprio sistema, para quando a rede não responde.</li>
+            }
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 3 *@
+    <section id="m-grupos">
+        <h2>3. Grupos e permissões <small>Regra 07</small></h2>
+        <p>O que cada pessoa vê e edita depende do <b>grupo</b> dela: <b>Visitante</b> (verificação / OBA, só consulta),
+           <b>Auditor</b> (consulta), <b>Técnico</b> (executa as OS), <b>Coordenador</b> (gerencia e aprova) e
+           <b>Administrador</b> (tudo).</p>
+        <h3>Como usar</h3>
+        <ol>
+            <li>Menu <b>Grupos</b> → abra o grupo → marque, em cada tela, <b>Ver</b> e <b>Editar</b> → Salvar. Vale na hora para todos daquele grupo.</li>
+            <li><b>Restaurar padrão</b> volta as permissões de fábrica do grupo.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>O Administrador nunca perde o acesso à tela Grupos (senão ninguém conseguiria desfazer).</li>
+            <li>Visitante e Auditor só veem as finalizações <b>aprovadas</b>.</li>
+            <li>Coordenador não altera conta de Administrador nem cria administradores.</li>
+        </ul>
+        <h3>Permissões valendo agora</h3>
+        <div class="manual-tabela">
+            <table class="tabela">
+                <thead><tr><th>Tela</th>@foreach (var g in grupos) { <th>@g.Nome()</th> }</tr></thead>
+                <tbody>
+                    @foreach (var m in Acesso.Modulos)
+                    {
+                        <tr>
+                            <td><b>@m.Nome</b>@if (m.Ajuda != "") { <div class="manual-ajuda">@m.Ajuda</div> }</td>
+                            @foreach (var g in grupos)
+                            {
+                                var p = Permissao(g, m);
+                                <td class="@(p == "—" ? "text-muted" : "")">@p</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    @* ---------------------------------------------------------------- 4 *@
+    <section id="m-areas">
+        <h2>4. Áreas</h2>
+        <p>A área é o cliente / célula dono da máquina (ex.: SAMSUNG, AVELL, ISS). Máquinas e pessoas pertencem a uma área.</p>
+        <h3>Como usar</h3>
+        <ol>
+            <li>Menu <b>Áreas</b>: digite o nome e adicione. Para renomear, clique na área. Para remover, marque e use Remover.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>A área é usada nos filtros de todas as listas, na NRE (quem paga) e nos e-mails (quem recebe).</li>
+            <li>Remover uma área deixa os usuários e as máquinas dela sem área.</li>
+            <li>A importação de equipamentos pelo Excel cadastra sozinha a área que ainda não existe.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 5 *@
+    <section id="m-usuarios">
+        <h2>5. Usuários</h2>
+        <h3>Como usar</h3>
+        <ol>
+            <li>Menu <b>Usuários</b> → Adicionar (ou clique na pessoa) → preencha @(pelaRede ? "matrícula" : "usuário"), nome, e-mail, grupo e área → Salvar.</li>
+            @if (pelaRede)
+            {
+                <li>A senha é a de rede (Windows). Só quem é marcado como <b>conta local</b> tem senha do sistema (mínimo de 6 caracteres).</li>
+            }
+            else
+            {
+                <li>Defina a senha (mínimo de 6 caracteres).</li>
+            }
+            <li>Para tirar o acesso sem apagar o histórico, desmarque <b>Ativo</b>.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>O <b>e-mail</b> e a <b>área</b> definem quem recebe os avisos (seção 15). Sem e-mail de verdade a pessoa não recebe nada.</li>
+            <li>Ninguém remove a si mesmo. Só administrador remove administrador.</li>
+            <li>Só aparecem como técnico da OS os usuários ativos do grupo Técnico; como coordenador, os do grupo Coordenador ou Administrador.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 6 *@
+    <section id="m-equipamentos">
+        <h2>6. Equipamentos</h2>
+        <h3>Como usar</h3>
+        <ol>
+            <li>Menu <b>Equipamentos</b> → Adicionar → preencha <b>nome</b> (tipo da máquina, ex.: ADESIVADORA), <b>prédio</b> e <b>localização</b> (obrigatórios), modelo, IRF, área e status → Salvar. O código aparece enquanto você digita.</li>
+            <li><b>IRF</b>: só nas máquinas que vieram da Samsung, preencha o número do IRF. Ele aparece na coluna IRF da lista e entra na pesquisa.</li>
+            <li><b>Manutenção preditiva</b> (aba do cadastro): para cada peça que se gasta com o tempo (ex.: BELT), informe quanto dura (ex.: 1 semana, 3 meses) e quando foi instalada → Salvar. O sistema mostra quando trocar e quanto da vida útil já foi usada. Ao trocar a peça, clique em <b>Trocada hoje</b>.</li>
+            <li>Muitas máquinas de uma vez: <b>Baixar modelo</b> → preencha a planilha → <b>Importar Excel</b>.</li>
+            <li><b>QR code</b>: gera a planilha de etiquetas das máquinas da lista. Cole a etiqueta na máquina: o QR abre as OS dela no celular.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>O <b>código</b> é gerado pelo sistema e <b>nunca muda</b>: prefixo do prédio + sigla do tipo + número de 5 dígitos (ex.: MTXADS02129).</li>
+            @if (prefixos.Count > 0)
+            {
+                <li>Prefixo dos prédios: <b>@string.Join(" · ", prefixos)</b>. Prédio fora dessa lista: o prefixo sai do próprio nome (TAMBAQUI → TMB).</li>
+            }
+            <li>Sigla: a mesma que as máquinas de mesmo nome já usam. Nome novo: as iniciais (MIXADOR DE PASTA DE SOLDA → MPS) ou, se for uma palavra só, a primeira letra + as consoantes (BUFFER → BFF).</li>
+            <li>O número é único e segue a sequência de todas as máquinas.</li>
+            <li>Status: <b>Operando</b>, <b>Em manutenção</b> ou <b>Inativo</b>.</li>
+            <li>Manutenção preditiva: <b>Em dia</b> · <b>Atenção</b> (já usou 80% da vida útil) · <b>Trocar</b> (chegou a data da troca). A coluna <b>Preditiva</b> da lista mostra a pior situação das peças de cada máquina. Trocas, peças novas e removidas ficam no Histórico da máquina.</li>
+            <li>Aviso por e-mail da preditiva: é um e-mail <b>separado</b> do resumo das OS, na mesma hora do resumo. Cada peça avisa <b>uma vez</b> quando fica perto de trocar e <b>uma vez</b> no dia da troca, para os técnicos da área da máquina (no dia da troca, também os coordenadores). Depois de clicar em <b>Trocada hoje</b>, a peça volta a avisar só no próximo ciclo.</li>
+            <li>Na importação: código em branco é gerado; código que já existe é atualizado; código novo é criado.</li>
+            <li>Máquina com plano, OS ou NRE <b>não pode ser removida</b>: marque como Inativo.</li>
+            <li>O cadastro da máquina mostra as NRE dela e quanto já foi gasto (aprovadas, em execução e concluídas), com o botão <b>Abrir NRE</b>.</li>
+            <li>Se o endereço do sistema mudar, gere os QR codes de novo.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 7 *@
+    <section id="m-cronograma">
+        <h2>7. Cronograma <small>Regras 01, 02 e 03</small></h2>
+        <p>O plano diz o que fazer em cada máquina e de quanto em quanto tempo. Cada plano gera e mantém a sua OS.</p>
+        <h3>Como usar</h3>
+        <ol>
+            <li>Menu <b>Cronograma</b> → Adicionar → escolha o <b>equipamento</b>, o <b>nome do plano</b> e a <b>periodicidade</b>.</li>
+            <li>Confira a <b>Data da manutenção</b> (já vem calculada) e, se quiser, a <b>Próxima manutenção</b> e o <b>Lembrar antes do prazo</b> (dias).</li>
+            <li>Na aba <b>Tarefas do plano</b>, escreva o checklist (uma tarefa por linha) → Salvar. A OS nasce na hora.</li>
+            <li>Muitos planos de uma vez: <b>Baixar modelo</b> → preencha (atividades na aba TASKS) → <b>Importar Excel</b>.</li>
+        </ol>
+        <h3>Periodicidades</h3>
+        <div class="manual-chips">
+            @foreach (var p in Enum.GetValues<Periodicidade>()) { <span><b>@p.Nome()</b> @((int)p) dia(s)</span> }
+        </div>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li><b>Um plano por equipamento + nome + periodicidade</b> (senão nasceriam duas OS iguais).</li>
+            <li><b>Regra 01 — o plano gera a OS.</b> O número (ordem de trabalho) é OS-ano-sequência, o mesmo para o mesmo equipamento + nome em todas as periodicidades.</li>
+            <li><b>Regra 03 — prazo pela periodicidade.</b> Plano novo: 1ª manutenção = hoje + periodicidade, com no mínimo <b>@Regras.DiasParaComecar dias</b> (a diária também começa em @Regras.DiasParaComecar). Ex.: semanal criada em 30/09 → 07/10; mensal → 30/10.</li>
+            <li><b>Nunca no domingo:</b> data que cair no domingo passa para a segunda-feira.</li>
+            <li>A próxima manutenção é a data + periodicidade; pode ser trocada, mas precisa ser depois da data da manutenção.</li>
+            <li>A data da OS de plano se muda <b>aqui no Cronograma</b> (a troca fica no histórico da OS como "Prazo reprogramado").</li>
+            <li><b>Regra 02 — o checklist vem do plano.</b> Mudou as tarefas ou a periodicidade: as OS que ainda não começaram (nenhuma tarefa marcada) recebem o novo checklist.</li>
+            <li>Plano trocado de máquina: a OS vai junto (as finalizações antigas ficam com a máquina de antes).</li>
+            <li><b>Remover o plano remove as OS dele</b>, com as finalizações e as fotos.</li>
+            <li>Na importação, mesmo equipamento + nome + periodicidade atualiza o plano; senão cria (com a OS). As atividades vêm do bloco da aba TASKS com o nome da máquina e a periodicidade (ex.: "ADESIVADORA - SEMANAL"). A Extração sai no mesmo formato e pode ser editada e importada de volta.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 8 *@
+    <section id="m-ordens">
+        <h2>8. Ordens de serviço <small>Regras 04 e 06</small></h2>
+        <h3>Como usar (técnico)</h3>
+        <ol>
+            <li>Leia o QR code da máquina (ou abra <b>Ordens de serviço</b> e pesquise pelo código) e clique na OS.</li>
+            <li>Aba <b>Tarefas</b>: marque o que foi feito. O texto das tarefas é travado: só se marca.</li>
+            <li>Aba <b>Peças utilizadas</b>: código (a lista sugere as peças do Spare Parts), peça e quantidade.</li>
+            <li>Aba <b>Imagens</b>: botão <b>Foto — Antes</b> e <b>Foto — Depois</b> abrem a câmera.</li>
+            <li><b>Salvar</b> com pelo menos uma tarefa marcada <b>conclui</b> a OS. Para só guardar o andamento, use <b>Salvar e continuar editando</b>. OS sem tarefas: botão <b>Concluir OS</b>.</li>
+        </ol>
+        <h3>Situação do prazo</h3>
+        <div class="manual-chips">
+            <span class="st-ok"><b>@SituacaoPrazo.EmDia.Nome()</b> faltam mais de @OrdemServico.DiasAtencao dias</span>
+            <span class="st-atencao"><b>@SituacaoPrazo.Atencao.Nome()</b> vence em até @OrdemServico.DiasAtencao dias</span>
+            <span class="st-atrasada"><b>@SituacaoPrazo.Atrasada.Nome()</b> passou do dia da manutenção</span>
+        </div>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li><b>Atrasada só depois do dia</b> da manutenção: no próprio dia ela ainda está no prazo.</li>
+            <li><b>Fotos obrigatórias para concluir:</b> pelo menos uma de Antes e uma de Depois. Faltou: o andamento é salvo, a OS não conclui e a tela volta para Imagens.</li>
+            <li><b>Regra 06 — só vale foto tirada hoje</b> (a data e a hora ficam gravadas e aparecem em cima da foto). Foto de outro dia é recusada.</li>
+            <li>As fotos são reduzidas a @Fotos.LadoMaximo px ao salvar e apagadas sozinhas depois de <b>@Fotos.DiasRetencao dias</b>.</li>
+            <li><b>Regra 04 — concluiu, reiniciou.</b> O ciclo (checklist, peças e fotos) vai para a <b>Finalização</b> e a <b>mesma OS</b> (mesmo número) continua na lista com o checklist zerado e a data do próximo ciclo: a "Próxima manutenção" que ela mostrava; se essa data já passou, hoje + periodicidade (sem domingo).</li>
+            <li>Ao concluir, o coordenador recebe um e-mail na hora e as peças com código ficam registradas no Spare Parts (histórico do código). Não existe estoque: nada é descontado.</li>
+            <li>OS retornada pelo coordenador aparece como <b>Retornada</b> na coluna <b>Retorno</b> da lista (no celular, botão <b>Motivo do retorno</b> no cartão). Clique para ver quem retornou, quando e o que precisa ser refeito. Some quando a OS é concluída de novo; o motivo continua no Histórico.</li>
+            <li>O técnico que começa a marcar tarefas numa OS sem técnico vira o responsável por ela.</li>
+            <li><b>OS avulsa</b> (Adicionar): escolha máquina, periodicidade e data. Se a máquina tem plano dessa periodicidade, a OS nasce com as tarefas e o número do plano; senão, escreva as tarefas (uma por linha).</li>
+            <li><b>Salvar e abrir NRE</b>: guarda o andamento (não conclui) e abre uma NRE já com a máquina e as peças lançadas.</li>
+            <li>Remover OS e a Extração pedem a permissão <b>Ordens de serviço — gestão</b>. Remover a OS apaga também as finalizações e as fotos dela.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 9 *@
+    <section id="m-finalizacao">
+        <h2>9. Finalização <small>Regra 05</small></h2>
+        <p>Cada ciclo concluído aparece aqui como <b>@StatusRevisao.Aguardando.Nome()</b> (os que aguardam ficam no alto da lista).</p>
+        <h3>Como usar (coordenador)</h3>
+        <ol>
+            <li>Abra a conclusão e confira o checklist, as peças e as fotos de antes e depois.</li>
+            <li><b>Aprovado</b>: a manutenção está certa. <b>Retornar</b>: precisa refazer — escreva o <b>motivo do retorno</b> na janela que abre.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>O <b>motivo do retorno é obrigatório</b>. Ele aparece na lista de Ordens de serviço, na coluna Retorno (clique em "Retornada"), até a OS ser concluída de novo.</li>
+            <li><b>Retornar</b> tira a conclusão da Finalização, mas não apaga a OS nem as fotos: a OS (mesmo número) volta para a data daquele ciclo, com o checklist a refazer e as fotos e peças de volta. Depois de refeita, ela segue para a data em que estava antes do retorno.</li>
+            <li><b>Qualquer conclusão</b> pode ser retornada, não só a mais recente. Retornou duas da mesma OS: ela volta para a data mais antiga, com os dois motivos, e é refeita uma vez.</li>
+            <li>Visitante e Auditor só veem as aprovadas (é a verificação / OBA pelo QR code).</li>
+            <li>Cada conclusão pode ser impressa. A Extração sai com as abas Finalização, Checklist e Imagens.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 10 *@
+    <section id="m-spare">
+        <h2>10. Spare Parts</h2>
+        <p>Cadastro das peças de reposição: código, descrição, equipamento (tipo de máquina) e quantidade. Não existe
+           controle de estoque: as peças lançadas nas OS são só registro e histórico de cada código.</p>
+        <h3>Como usar</h3>
+        <ol>
+            <li>No quadro do alto, preencha e clique <b>Adicionar</b>. Para alterar, clique na peça da lista: ela abre no quadro do alto → Salvar.</li>
+            <li>No campo <b>Equipamento</b>, clique para ver os tipos de máquina ou digite para pesquisar.</li>
+            <li>Muitas peças de uma vez: <b>Baixar modelo</b> → preencha código, descrição, equipamento e quantidade → <b>Importar Excel</b>. A planilha da Extração também pode ser editada e importada de volta.</li>
+        </ol>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>A <b>quantidade</b> só muda quando alguém altera aqui. A conclusão da OS não desconta nada: ela registra em qual OS e máquina a peça foi usada, quanto e quando (a conclusão retornada desfaz esse registro).</li>
+            <li>Mudar a quantidade na tela grava um <b>ajuste de inventário</b> (quem, quando, de quanto para quanto).</li>
+            <li>Código lançado na OS que ainda não existe aqui é cadastrado sozinho.</li>
+            <li>Trocar o código de uma peça troca também nas peças lançadas nas OS, para o histórico de uso continuar nesta peça.</li>
+            <li>Remover: peça nunca usada é apagada; peça já usada em OS fica <b>inativa</b> (some da lista e das sugestões, mas o histórico fica). Cadastrar o mesmo código de novo traz ela de volta.</li>
+            <li>Na importação: código novo vira peça nova; código que já existe é atualizado (e volta, se tinha sido removido). Quantidade em branco não muda a quantidade; quantidade diferente grava o movimento (entrada ou ajuste de inventário).</li>
+            <li>A Extração sai com as abas Peças e Movimentos (usos em OS, usos desfeitos por retorno e ajustes de quantidade).</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 11 *@
+    <section id="m-nre">
+        <h2>11. NRE</h2>
+        <p>Pedido de gasto <b>não recorrente</b> de uma máquina (peça, serviço externo, ferramental, melhoria...), cobrado da área (cliente).</p>
+        <h3>Como usar</h3>
+        <ol>
+            <li>Abra pelo menu <b>NRE</b> → Adicionar, pela OS (<b>Salvar e abrir NRE</b>) ou pelo cadastro da máquina (<b>Abrir NRE</b>). Pela OS e pela máquina ela já vem preenchida.</li>
+            <li>Preencha título, modelo e NRE do cliente (NRE Order), equipamento (tipo de máquina), área, tipo, a <b>descrição</b> (o que precisa e por quê), os itens (código, descrição, quantidade e valor) e anexe orçamento, PO etc. → Salvar.</li>
+            <li>Não tem botão de aprovar nem de recusar: a aprovação do cliente fica registrada no alto do Resumo (data e aprovador), só como informação.</li>
+            <li>Os passos seguem pelos botões ao lado, sem depender da aprovação: <b>Marcar como comprada</b> → registre as DIs e NFs no Detalhado → <b>Marcar como cobrada do cliente</b> → <b>Concluir NRE</b>.</li>
+            <li>A NRE tem 4 abas, uma por planilha de NRE do cliente: <b>Resumo</b> = planilha azul (no alto: data da aprovação, modelo, item/projeto, valor aprovado, Ptax, aprovador e NRE Order; em cinza, calculados como as fórmulas da planilha: Final Amount = valor aprovado × Ptax, Taxas = Final Amount × 9,3871094945943% e Final Amount + Taxas; embaixo: aprovado, Final Amount, taxas e total a cobrar e a tabela por DI; o status fica no alto, ao lado do título), <b>Detalhado</b> = planilha amarela (o que aconteceu), <b>Máquina e descrição</b> (só no sistema) e <b>Arquivos</b>.</li>
+            <li>No <b>Detalhado</b>, cada DI é um bloco (invoice, PTAX, frete, seguro e os itens em US$); compra nacional é um bloco com a NF e os itens em R$. Só isso se digita: os reais, as taxas (9,3871%) e o Resumo saem sozinhos.</li>
+            <li>Sem Detalhado ainda, o Resumo usa a previsão da aprovação (o Final Amount do alto do Resumo: valor aprovado × Ptax). A <b>Extração</b> da lista baixa o resumo no formato do cliente (a aba Summary, com o total).</li>
+        </ol>
+        <h3>Fluxo</h3>
+        <div class="manual-chips">
+            <span class="st-andamento"><b>@StatusNre.Aberta.Nome()</b></span> →
+            <span class="st-aberta"><b>@StatusNre.EmAndamento.Nome()</b></span> →
+            <span class="st-andamento"><b>@StatusNre.Cobrada.Nome()</b></span> →
+            <span class="st-ok"><b>@StatusNre.Concluida.Nome()</b></span>
+        </div>
+        <h3>Regras</h3>
+        <ul class="manual-regras">
+            <li>Número: NRE-ano-sequência (recomeça a cada ano).</li>
+            <li>Quem remove é quem tem a permissão <b>NRE — aprovação</b> (coordenador).</li>
+            <li>Tudo na NRE (máquina, área, tipo, descrição, Resumo e Detalhado) muda <b>até concluir</b>. Anexos, a qualquer momento.</li>
+            <li>Passou do valor aprovado e a empresa vai arcar com a diferença: no fim do <b>Detalhado</b>, em <b>Fechamento</b>, preencha <b>Custo absorvido pela empresa (R$)</b> e o <b>Motivo da diferença</b>. Eles aparecem no aviso de diferença do Resumo e na Extração.</li>
+            <li>A máquina exata fica ligada só quando a NRE vem da OS ou do cadastro da máquina e o tipo não é trocado.</li>
+            <li>Anexos aceitos: @string.Join(" ", Anexos.Extensoes), até <b>@(Anexos.TamanhoMaximo / 1024 / 1024) MB</b> cada. Eles não se apagam sozinhos.</li>
+            <li>A lista segue a planilha de NRE do cliente: <b>Modelo · NRE · Título · NF · Invoice · Valor · DI</b>. O Valor é o valor aprovado pelo cliente (sem ele, a soma dos itens). Os outros dados ficam na própria NRE e na Extração.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 12 *@
+    <section id="m-calendario">
+        <h2>12. Calendário</h2>
+        <ul class="manual-regras">
+            <li>Cada OS aparece no dia da <b>data da manutenção</b>: azul aberta, vermelha atrasada.</li>
+            <li>Clique num dia para ver as OS pendentes dele embaixo. Filtre por mês, localização e área.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 13 *@
+    <section id="m-dashboard">
+        <h2>13. Dashboard</h2>
+        <ul class="manual-regras">
+            <li>Quadros do topo: equipamentos, OS abertas, planos atrasados e concluídas.</li>
+            <li>Clicar numa fatia de um gráfico filtra os <b>outros</b> gráficos. As barras por localização mostram a lista das OS.</li>
+            <li>Os filtros de área e localização valem para quadros, gráficos, listas e Extração.</li>
+            <li>A Extração (Excel dos indicadores) é do <b>Editar</b> do Dashboard.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 14 *@
+    <section id="m-jms">
+        <h2>14. Histórico JMS</h2>
+        <ul class="manual-regras">
+            <li>Consulta das Work Orders finalizadas no JMS (sistema antigo).</li>
+            <li>Entram pelo <b>Importar Excel</b>: a aba JMS da planilha MANUTENÇÃO PREVENTIVA ou a planilha da Extração desta tela.</li>
+            <li>Importar de novo <b>não duplica</b>: Work Order que já existe é atualizada; nova é criada.</li>
+            <li>Importar e remover é do coordenador; os outros só consultam.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 15 *@
+    <section id="m-avisos">
+        <h2>15. Sino e e-mails</h2>
+        <h3>Sino (topo da tela)</h3>
+        <ul class="manual-regras">
+            <li>A OS entra no sino a partir de <b>data da manutenção − dias de lembrete</b> (campo "Lembrar antes do prazo" do plano).</li>
+            <li>O técnico vê as OS dele e as sem técnico; os outros grupos veem todas. "Ver todos" abre a lista completa.</li>
+        </ul>
+        <h3>E-mails</h3>
+        @if (emailEmTeste)
+        {
+            <p class="manual-nota">Os e-mails estão em <b>modo de teste</b>: por enquanto vão só para o administrador, não para técnicos e coordenadores.</p>
+        }
+        <ul class="manual-regras">
+            <li><b>Conclusão aguardando aprovação:</b> e-mail na hora para o coordenador (uma vez por conclusão).</li>
+            <li><b>Resumo do dia</b>, a partir das <b>@horaResumo</b> (domingo não manda): o técnico recebe as OS atrasadas e as que vencem em até @OrdemServico.DiasAtencao dias; o coordenador, as conclusões esperando a aprovação dele e as OS atrasadas.</li>
+            <li><b>Quem recebe:</b> só quem é da <b>mesma área</b> da máquina (área no cadastro do usuário): e-mail de máquina da SAMSUNG nunca vai para quem é da AVELL. Dentro da área, recebe o técnico / coordenador marcado na OS; sem ninguém marcado (ou marcado de outra área), os técnicos / coordenadores da área. Área sem técnico: o aviso de atenção vai para o coordenador da área.</li>
+            <li>Área sem ninguém com e-mail, máquina sem área ou usuário sem área: o e-mail <b>não sai</b> (não vai para outra área). Cadastre pelo menos um técnico ou coordenador com e-mail em cada área.</li>
+            <li>Só recebe quem está ativo e tem e-mail de verdade no cadastro.</li>
+            <li><b>Parar os e-mails de uma pessoa:</b> Usuários → clique na pessoa → desmarque <b>Receber os avisos por e-mail</b> → Salvar. Ela para de receber todos os e-mails automáticos (o aviso não vai para outra pessoa no lugar dela). Para voltar a receber, marque de novo. Na lista de Usuários ela aparece com a etiqueta <b>sem e-mail</b>.</li>
+            <li>O mesmo aviso não sai duas vezes; se falhar, o sistema tenta de novo (até 3 vezes).</li>
+            <li>Os e-mails saem pelo Outlook do computador onde o sistema roda, e só enquanto ele está ligado.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 16 *@
+    <section id="m-historico">
+        <h2>16. Histórico das alterações</h2>
+        <ul class="manual-regras">
+            <li>Tudo o que é criado, alterado, concluído, aprovado, retornado ou removido fica registrado: <b>quem</b>, <b>quando</b> e <b>o que mudou</b> (de quanto para quanto).</li>
+            <li>Abra pelo botão <b>Histórico</b> do registro. Quem pode ver a tela do registro pode ver o histórico dele.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 17 *@
+    <section id="m-dicas">
+        <h2>17. Excel, celular e idioma</h2>
+        <ul class="manual-regras">
+            <li><b>Excel:</b> Baixar modelo → preencher → Importar Excel. A Extração sai com as mesmas colunas e pode ser editada e importada de volta. As linhas com problema aparecem num aviso amarelo; as outras entram.</li>
+            <li><b>Celular e tablet:</b> as listas viram cartões com a cor da situação; o menu abre pelo ☰.</li>
+            <li><b>Idioma:</b> o globo do topo troca a tela para English, Español, 中文 ou 한국어. O que foi cadastrado (máquinas, tarefas, nomes) e este manual continuam em português.</li>
+        </ul>
+    </section>
+
+    @* ---------------------------------------------------------------- 18 *@
+    <section id="m-problemas">
+        <h2>18. Se algo não funcionar</h2>
+        <dl class="manual-termos">
+            <dt>Não abre no celular</dt><dd>Confira se o celular está no Wi-Fi da empresa. Se o endereço do sistema mudou, os QR codes precisam ser gerados de novo.</dd>
+            <dt>"Muitas senhas erradas"</dt><dd>Aguarde @TentativasLogin.Pausa.TotalMinutes.ToString("0") minutos e tente de novo com a senha do Windows.</dd>
+            <dt>Foto recusada</dt><dd>Só vale foto tirada hoje. Tire a foto na hora, pelo botão da tela.</dd>
+            <dt>A OS não conclui</dt><dd>Falta foto de Antes ou de Depois, ou nenhuma tarefa foi marcada.</dd>
+            <dt>Não recebo e-mail</dt><dd>Confira o e-mail e a área no seu cadastro (tela Usuários).</dd>
+            <dt>Não vejo uma tela ou um botão</dt><dd>O seu grupo não tem a permissão (seção 3). Fale com o administrador.</dd>
+            <dt>Não consigo remover uma máquina</dt><dd>Ela tem plano, OS ou NRE: marque como Inativo.</dd>
+        </dl>
+    </section>
+</div>

@@ -1,0 +1,21 @@
+@model string
+@*
+    ============================================================================
+    JANELA "IMPORTAR EXCEL" (Equipamentos e Cronograma) — escolher o arquivo e enviar.
+    O texto de ajuda vem de cada tela; a leitura da planilha está em Servicos/Excel.cs.
+    ============================================================================
+*@
+@* Modal "Importar Excel". O modelo (string) é o texto de ajuda da tela. *@
+<div class="modal fade" id="modalImportar" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content" method="post" asp-page-handler="Importar" enctype="multipart/form-data">
+            <div class="modal-header"><h5 class="modal-title">Importar Excel</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p class="small text-muted mb-1">Use a planilha do botão <b>Baixar modelo</b> (ou a da <b>Extração</b>).</p>
+                <p class="small text-muted">@Model</p>
+                <input class="form-control" type="file" name="arquivo" accept=".xlsx" required />
+            </div>
+            <div class="modal-footer"><button class="btn-ms b-azul" type="submit">@Icones.Svg("enviar") Importar</button></div>
+        </form>
+    </div>
+</div>

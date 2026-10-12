@@ -1,0 +1,58 @@
+@page
+@model MS.Pages.Celulas.IndexModel
+@*
+    ============================================================================
+    TELA: ÁREAS (visual; no código e no banco o nome continua Celula)  ·  lógica em Index.cshtml.cs
+    Partes: 1. campo do nome + logo (card da tela "Escolha a área") + Adicionar/Salvar · 2. Remover selecionados
+    · 3. tabela com caixinhas, logo e nome (também no celular).
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Áreas";
+    ViewData["Trilha"] = "Autenticação e Autorização";
+}
+@if (Model.PodeEditar)
+{
+    <form method="post" asp-page-handler="Salvar" enctype="multipart/form-data" class="filtros">
+        <input type="hidden" name="id" value="@Model.EditandoId" />
+        <input class="form-control" name="nome" value="@Model.EditandoNome" placeholder="Nome da área" required maxlength="80" />
+        <input class="form-control" type="file" name="logo" accept="@string.Join(",", Model.TiposLogo)" title="Logo da área (PNG, JPG ou WEBP)" aria-label="Logo da área" />
+        @if (Model.EditandoTemLogo)
+        {
+            <label class="form-check d-flex align-items-center gap-2 mb-0"><input type="checkbox" class="form-check-input" name="removerLogo" value="true" /> Remover logo</label>
+        }
+        <button class="btn-ms b-verde" type="submit">@Icones.Svg(Model.EditandoId > 0 ? "ok" : "mais") @(Model.EditandoId > 0 ? "Salvar" : "Adicionar área")</button>
+        @if (Model.EditandoId > 0) { <a class="btn-ms b-cinza" asp-page="Index">Cancelar</a> }
+    </form>
+}
+<form method="post">
+    @if (Model.PodeEditar && Model.Lista.Count > 0)
+    {
+        <div class="barra-acoes">
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-exige-selecao=".sel-cel" data-confirmar="Remover {n} área(s) marcada(s)? Os usuários e equipamentos delas ficam sem área.">@Icones.Svg("lixo") Remover selecionados</button>
+        </div>
+    }
+    <div class="cartao">
+        @* Tabela também no celular (poucas colunas): caixinha + nome. *@
+        <table class="tabela">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th class="col-sel"><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-cel" aria-label="Marcar todas" /></th> }
+                    <th class="col-logo">Logo</th>
+                    <th class="esq">Área</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Model.Lista)
+                {
+                    <tr class="@(Model.PodeEditar ? "linha-clicavel" : "")" data-href="@(Model.PodeEditar ? Url.Page("Index", new { editar = c.Id }) : null)">
+                        @if (Model.PodeEditar) { <td class="col-sel"><input type="checkbox" class="form-check-input sel-cel" name="ids" value="@c.Id" aria-label="Marcar @c.Nome" /></td> }
+                        <td class="col-logo">@if (c.Logo is long v) { <img class="logo-area-mini" src="@Url.Page("/EscolherArea/Index", "Logo", new { id = c.Id, v })" alt="Logo @c.Nome" /> }</td>
+                        <td class="esq"><b class="nome-azul">@c.Nome</b></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</form>
+<p class="contagem">@Model.Lista.Count @(Model.Lista.Count == 1 ? "área" : "áreas")</p>

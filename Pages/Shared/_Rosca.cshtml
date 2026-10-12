@@ -1,0 +1,44 @@
+@model Rosca
+@*
+    ============================================================================
+    GRÁFICO DE ROSCA do Dashboard. Dados: Modelos/Graficos.cs → Rosca. Cores e tamanhos: estilos.css seção 13.
+    Cada fatia (e cada item da legenda) é um link: clicar filtra os OUTROS gráficos; clicar de novo tira o filtro
+    (Pages/Index.cshtml → Alterna). Passar o mouse na fatia mostra "Rótulo: quantidade (percentual)".
+    ============================================================================
+*@
+@{
+    var total = Model.Fatias.Sum(f => f.Qtd);
+    var temAtiva = Model.Fatias.Any(f => f.Ativa);
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    string Pct(int q) => total == 0 ? "0%" : (q * 100.0 / total).ToString("0.#") + "%";
+    // Círculo de raio 15,915 → circunferência 100: cada fatia ocupa o seu percentual do traço, começando no alto (12h).
+    double inicio = 0;
+}
+<div class="cartao grafico rosca">
+    <h3>@Model.Titulo</h3>
+    <svg class="rosca-svg" viewBox="0 0 42 42" role="img" aria-label="@Model.Titulo">
+        <circle cx="21" cy="21" r="15.915" fill="none" stroke-width="6" style="stroke:var(--fundo)" />
+        @foreach (var f in Model.Fatias.Where(f => f.Qtd > 0))
+        {
+            var p = f.Qtd * 100.0 / total;
+            <a href="@(f.Url ?? "#")" class="@(temAtiva && !f.Ativa ? "apagada" : "")">
+                <title>@f.Rotulo: @f.Qtd (@Pct(f.Qtd))</title>
+                <circle cx="21" cy="21" r="15.915" fill="none" stroke-width="@(f.Ativa ? 8 : 6)" style="stroke:@f.Cor"
+                        stroke-dasharray="@p.ToString("0.###", inv) @((100 - p).ToString("0.###", inv))"
+                        stroke-dashoffset="@((25 - inicio).ToString("0.###", inv))" />
+            </a>
+            inicio += p;
+        }
+    </svg>
+    <ul class="rosca-legenda">
+        @foreach (var f in Model.Fatias.Where(f => f.Qtd > 0 || f.Ativa))
+        {
+            <li class="@(f.Ativa ? "ativa" : "")">
+                @if (f.Url != null) { <a href="@f.Url"><span class="ponto-redondo" style="background:@f.Cor"></span>@f.Rotulo</a> }
+                else { <span><span class="ponto-redondo" style="background:@f.Cor"></span>@f.Rotulo</span> }
+                <span class="rosca-valor">@f.Qtd (@Pct(f.Qtd))</span>
+            </li>
+        }
+        @if (total == 0) { <li class="text-muted">Sem dados com esse filtro.</li> }
+    </ul>
+</div>

@@ -1,0 +1,14 @@
+@page "{id:int}"
+@model MS.Pages.Ordens.ImprimirModel
+@*
+    ============================================================================
+    TELA: ORDENS DE SERVIÇO — folha de impressão  ·  lógica em Ver.cshtml.cs (ImprimirModel)
+    Usa o molde Shared/_Impressao.cshtml (ícone da marca, título e data). A folha não leva as fotos.
+    ============================================================================
+*@
+@{
+    Layout = "_Impressao";
+    ViewData["Title"] = $"Ordem de serviço {Model.Os.Numero}";
+    ViewData["Impressao"] = true; // a folha impressa não leva as imagens
+}
+<partial name="_OsDetalhe" model="Model.Os" />

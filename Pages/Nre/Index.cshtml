@@ -1,0 +1,116 @@
+@page
+@model MS.Pages.Nre.IndexModel
+@*
+    ============================================================================
+    TELA: NRE — lista (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros · 2. botões (Abrir NRE, Remover, Extração) · 3. lista
+      Lista ............... cartões com etiqueta colorida pelo status (celular/tablet) e tabela (computador) · páginas.
+                            Colunas como a planilha de NRE do cliente: Modelo · NRE · Título · NF · Invoice · Valor · DI
+                            (NF, invoice e DI vêm do Detalhado; Valor = Final Amount).
+      A aba "Resumo do cliente" saiu da tela (pedido do usuário, 2026-10-07); o resumo (aba Summary) continua na Extração.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "NRE";
+    ViewData["Trilha"] = "Manutenção";
+    object Filtros(int pagina) => new { Model.Status, Model.Tipo, Model.CelulaId, Model.Ano, Model.Q, Pagina = pagina };
+    string Nf(Modelos.Nre n) => n.Juntar(r => r.NotaFiscal) ?? "-";
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Status">
+        <option value="">Status</option>
+        @foreach (var s in Enum.GetValues<StatusNre>()) { <option value="@s">@s.Nome()</option> }
+    </select>
+    <select class="form-select" asp-for="Tipo">
+        <option value="">Tipo</option>
+        @foreach (var t in Enum.GetValues<TipoNre>()) { <option value="@t">@t.Nome()</option> }
+    </select>
+    <select class="form-select" asp-for="Ano">
+        <option value="">Ano de abertura</option>
+        @foreach (var a in Model.Anos) { <option value="@a">@a</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="NRE, título, modelo, NF, invoice, DI ou PO" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+
+<form method="post">
+    <div class="barra-acoes">
+        @if (Model.PodeEditar)
+        {
+            <a class="btn-ms b-verde" asp-page="Editar">@Icones.Svg("mais") Abrir NRE</a>
+        }
+        @if (Model.Aprova)
+        {
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" asp-route-status="@Model.Status" asp-route-tipo="@Model.Tipo" asp-route-celulaid="@Model.CelulaId" asp-route-ano="@Model.Ano" asp-route-q="@Model.Q" data-exige-selecao=".sel-nre" data-confirmar="Remover {n} NRE marcada(s)?">@Icones.Svg("lixo") Remover selecionados</button>
+        }
+        <a class="btn-ms b-verde" href="@Url.Page("Index", "Extracao", new { Model.Status, Model.Tipo, Model.CelulaId, Model.Ano, Model.Q })">@Icones.Svg("baixar") Extração</a>
+    </div>
+
+    @* Celular e tablet: cartões com etiqueta colorida pelo status (Textos.Etiqueta); computador: tabela. *@
+    <div class="legenda legenda-cores d-lg-none mt-2">
+        <span><span class="quadro atencao"></span>Aguardando aprovação</span>
+        <span><span class="quadro neutro"></span>Em curso</span>
+        <span><span class="quadro em-dia"></span>Concluída</span>
+        <span><span class="quadro atrasada"></span>Recusada</span>
+    </div>
+    <div class="cartoes d-lg-none">
+        @foreach (var n in Model.Lista)
+        {
+            <div class="cartao-os" data-href="@Url.Page("Editar", new { id = n.Id })">
+                @if (Model.Aprova) { <input type="checkbox" class="form-check-input sel-nre mb-2" name="ids" value="@n.Id" aria-label="Marcar @n.Numero" /> }
+                <div class="ticket @n.Status.Etiqueta()">
+                    <div><span>Modelo:</span><span>@(n.Modelo ?? "-")</span></div>
+                    <div><span>NRE:</span><span>@(n.CodigoNre ?? "-")</span></div>
+                    <div><span>Valor:</span><span>@n.FinalAmount().Reais()</span></div>
+                </div>
+                <div class="titulo">@(n.Titulo ?? n.Maquina ?? n.Descricao)</div>
+                <div class="linha"><span>NF: @Nf(n)</span><span class="pilula @n.Status.Css()">@n.Status.Nome()</span></div>
+                <div class="linha"><span>Invoice: @(n.Juntar(r => r.Invoice) ?? "-")</span></div>
+                <div class="linha"><span>DI: @(n.Juntar(r => r.Di) ?? "-")</span></div>
+            </div>
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted">Nenhuma NRE encontrada.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    @if (Model.Aprova) { <th><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-nre" aria-label="Marcar todas" /></th> }
+                    @* Como a planilha de NRE do cliente (a pedido). Equipamento, área, tipo, status e data continuam na NRE e na Extração.
+                       NF, invoice e DI vêm do Detalhado; Valor = Final Amount (do Detalhado ou o previsto na aprovação). *@
+                    <th>Modelo</th><th>NRE</th><th>Título</th><th>NF</th><th>Invoice</th>
+                    <th class="text-end">Valor</th><th>DI</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var n in Model.Lista)
+                {
+                    <tr class="linha-clicavel" data-href="@Url.Page("Editar", new { id = n.Id })">
+                        @if (Model.Aprova) { <td class="sem-rotulo acoes-linha"><input type="checkbox" class="form-check-input sel-nre" name="ids" value="@n.Id" aria-label="Marcar @n.Numero" /></td> }
+                        <td data-rotulo="Modelo" class="text-nowrap">@(n.Modelo ?? "-")</td>
+                        <td data-rotulo="NRE" class="text-nowrap">@(n.CodigoNre ?? "-")</td>
+                        <td data-rotulo="Título">@(n.Titulo ?? n.Maquina ?? n.Descricao)</td>
+                        <td data-rotulo="NF">@Nf(n)</td>
+                        <td data-rotulo="Invoice">@(n.Juntar(r => r.Invoice) ?? "-")</td>
+                        <td data-rotulo="Valor" class="text-end text-nowrap">@n.FinalAmount().Reais()</td>
+                        <td data-rotulo="DI">@(n.Juntar(r => r.Di) ?? "-")</td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="8" class="text-muted">Nenhuma NRE encontrada.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center mt-2 gap-2">
+    <span class="contagem">@Model.Total NRE</span>
+    @if (Model.Paginas > 1)
+    {
+        <ul class="pagination pagination-sm mb-0">
+            <li class="page-item @(Model.Pagina == 1 ? "disabled" : "")"><a class="page-link" href="@Url.Page("Index", Filtros(Model.Pagina - 1))">‹</a></li>
+            <li class="page-item disabled"><span class="page-link">@Model.Pagina / @Model.Paginas</span></li>
+            <li class="page-item @(Model.Pagina == Model.Paginas ? "disabled" : "")"><a class="page-link" href="@Url.Page("Index", Filtros(Model.Pagina + 1))">›</a></li>
+        </ul>
+    }
+</div>

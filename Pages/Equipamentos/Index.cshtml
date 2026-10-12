@@ -1,0 +1,127 @@
+﻿@page
+@model MS.Pages.Equipamentos.IndexModel
+@*
+    ============================================================================
+    TELA: EQUIPAMENTOS — lista (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros (prédio, localização, célula, status, pesquisa) · 2. botões (Adicionar, Remover, Baixar modelo, Importar Excel,
+            Extração, QR code) · 3. cartões com etiqueta colorida pelo status (celular/tablet) · 4. tabela (computador)
+            Colunas: ... IRF (máquinas que vieram da Samsung) · Preditiva (pior situação das peças da aba Manutenção preditiva)
+            · 5. janela Importar Excel (Shared/_ModalImportar.cshtml)
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Equipamentos";
+    ViewData["Trilha"] = "Manutenção";
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Predio">
+        <option value="">Prédio</option>
+        @foreach (var p in Model.Predios) { <option value="@p">@p</option> }
+    </select>
+    <select class="form-select" asp-for="Local">
+        <option value="">Localização</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <select class="form-select" asp-for="Status">
+        <option value="">Status</option>
+        @foreach (var s in Textos.StatusEquipamentoOpcoes) { <option value="@s">@s.Nome()</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="Código, nome, modelo ou IRF" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+<form method="post">
+    <div class="barra-acoes">
+        @if (Model.PodeEditar)
+        {
+            <a class="btn-ms b-verde" asp-page="Editar">@Icones.Svg("mais") Adicionar equipamento</a>
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" asp-route-predio="@Model.Predio" asp-route-local="@Model.Local" asp-route-celulaid="@Model.CelulaId" asp-route-status="@Model.Status" asp-route-q="@Model.Q" data-exige-selecao=".sel-eq" data-confirmar="Remover {n} equipamento(s) marcado(s)? Os que têm planos, OS ou NRE não são removidos.">@Icones.Svg("lixo") Remover selecionados</button>
+        }
+        <a class="btn-ms b-cinza d-none d-lg-inline-flex" asp-page-handler="Modelo">@Icones.Svg("arquivo") Baixar modelo</a>
+        @if (Model.PodeEditar)
+        {
+            <button type="button" class="btn-ms b-azul d-none d-lg-inline-flex" data-bs-toggle="modal" data-bs-target="#modalImportar">@Icones.Svg("enviar") Importar Excel</button>
+        }
+        <a class="btn-ms b-verde" href="@Url.Page("Index", "Extracao", new { Model.Predio, Model.Local, Model.CelulaId, Model.Status, Model.Q })">@Icones.Svg("baixar") Extração</a>
+        <a class="btn-ms b-azul" href="@Url.Page("Index", "QrCode", new { Model.Predio, Model.Local, Model.CelulaId, Model.Status, Model.Q })" title="Planilha com o QR code de cada máquina que tem OS">@Icones.Svg("qrcode") QR code</a>
+    </div>
+    @* Celular e tablet: cartões com etiqueta colorida pelo status do equipamento; computador: tabela. *@
+    <div class="legenda legenda-cores d-lg-none">
+        <span><span class="quadro em-dia"></span>Operando</span>
+        <span><span class="quadro atencao"></span>Em manutenção</span>
+        <span><span class="quadro inativo"></span>Inativo</span>
+    </div>
+    <div class="cartoes d-lg-none">
+        @foreach (var e in Model.Lista)
+        {
+            var (cor, pilula) = e.Status switch
+            {
+                StatusEquipamento.Operando => ("em-dia", "st-ok"),
+                StatusEquipamento.EmManutencao => ("atencao", "pendente"),
+                _ => ("inativo", "text-muted"),
+            };
+            <div class="cartao-os" data-href="@Url.Page("Editar", new { id = e.Id })">
+                @if (Model.PodeEditar) { <input type="checkbox" class="form-check-input sel-eq mb-2" name="ids" value="@e.Id" aria-label="Marcar @e.Codigo" /> }
+                <div class="ticket @cor">
+                    <div><span>Código:</span><span>@e.Codigo</span></div>
+                    <div><span>Modelo:</span><span>@(e.Modelo ?? "-")</span></div>
+                    @if (e.Irf != null) { <div><span>IRF:</span><span>@e.Irf</span></div> }
+                    <div><span>Prédio:</span><span>@(e.Predio == "" ? "-" : e.Predio)</span></div>
+                    <div><span>Linha:</span><span>@e.Localizacao</span></div>
+                </div>
+                <div class="titulo">@e.Descricao</div>
+                <div class="linha"><span>Área: @(e.Celula?.Nome ?? "-")</span><span class="pilula @pilula">@e.Status.Nome()</span></div>
+                @if (Model.Preditiva.TryGetValue(e.Id, out var pc))
+                {
+                    <div class="linha"><span>Preditiva: <span class="@pc.Situacao.Css()">@pc.Situacao.NomePeca()</span>@(pc.Situacao == SituacaoPrazo.EmDia ? "" : $" · {string.Join(", ", pc.Pecas)}")</span></div>
+                }
+                <div class="botoes">
+                    <a asp-page="Editar" asp-route-id="@e.Id">@Icones.Svg("equipamento", 18) Editar</a>
+                    <a asp-page="/Cronograma/Index" asp-route-q="@e.Codigo">@Icones.Svg("plano", 18) Cronograma</a>
+                </div>
+            </div>
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted">Nenhum equipamento encontrado.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-eq" aria-label="Marcar todas" /></th> }
+                    <th>Código</th><th>Nome</th><th>Modelo</th><th>IRF</th><th>Prédio</th><th>Localização</th><th>Área</th><th>Status</th><th>Preditiva</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in Model.Lista)
+                {
+                    <tr class="linha-clicavel" data-href="@Url.Page("Editar", new { id = e.Id })">
+                        @if (Model.PodeEditar) { <td class="sem-rotulo acoes-linha"><input type="checkbox" class="form-check-input sel-eq" name="ids" value="@e.Id" aria-label="Marcar @e.Codigo" /></td> }
+                        <td data-rotulo="Código">@e.Codigo</td>
+                        <td data-rotulo="Nome">@e.Nome</td>
+                        <td data-rotulo="Modelo">@(e.Modelo ?? "-")</td>
+                        <td data-rotulo="IRF">@(e.Irf ?? "-")</td>
+                        <td data-rotulo="Prédio">@(e.Predio == "" ? "-" : e.Predio)</td>
+                        <td data-rotulo="Localização">@e.Localizacao</td>
+                        <td data-rotulo="Área">@(e.Celula?.Nome ?? "-")</td>
+                        <td data-rotulo="Status">@e.Status.Nome()</td>
+                        @* Pior situação das peças da aba Manutenção preditiva (e quais peças estão nela). *@
+                        <td data-rotulo="Preditiva">
+                            @if (Model.Preditiva.TryGetValue(e.Id, out var pt))
+                            {
+                                <span class="@pt.Situacao.Css()">@pt.Situacao.NomePeca()</span>
+                                @if (pt.Situacao != SituacaoPrazo.EmDia) { <div class="small">@string.Join(", ", pt.Pecas)</div> }
+                            }
+                            else { <span>-</span> }
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="10" class="text-muted">Nenhum equipamento encontrado.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+<p class="contagem">@Model.Lista.Count equipamentos</p>
+@if (Model.PodeEditar)
+{
+    <partial name="_ModalImportar" model="@("Código em branco: o sistema gera o código, como no cadastro manual. Código já cadastrado é atualizado; código novo é criado. IRF: só nas máquinas que vieram da Samsung. Status: Operando, Em manutenção ou Inativo. Área que não existir é cadastrada.")" />
+}

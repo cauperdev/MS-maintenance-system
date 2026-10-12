@@ -1,0 +1,21 @@
+@page "{id:int}"
+@model MS.Pages.Finalizacao.VerModel
+@*
+    ============================================================================
+    TELA: FINALIZAÇÃO — visualização (só leitura)  ·  lógica em Ver.cshtml.cs (VerModel)
+    A ficha em si está em _FinDetalhe.cshtml.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Finalização";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Finalização";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = $"Visualização {Model.Fin.NumeroOS}";
+}
+<div class="barra-acoes">
+    <a class="btn-ms b-cinza" asp-page="Index">&larr; Voltar</a>
+    @if (Model.PodeEditar) { <a class="btn-ms b-azul" asp-page="Editar" asp-route-id="@Model.Fin.Id">Revisar</a> }
+    <a class="btn-ms b-azulclaro" asp-page="Imprimir" asp-route-id="@Model.Fin.Id" target="_blank">@Icones.Svg("imprimir", 16) Imprimir</a>
+</div>
+<div class="cartao"><partial name="_FinDetalhe" model="Model.Fin" /></div>

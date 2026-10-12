@@ -1,0 +1,226 @@
+@page "{id:int?}"
+@model MS.Pages.Equipamentos.EditarModel
+@*
+    ============================================================================
+    TELA: EQUIPAMENTOS — cadastro (visual)  ·  lógica em Editar.cshtml.cs
+    Abas: 1. Dados do equipamento — código (automático), nome, modelo, IRF (máquinas da Samsung), prédio (obrigatório),
+             localização, status, célula. Embaixo: NRE desta máquina (lista e gasto).
+          2. Manutenção preditiva — peças com vida útil (ex.: BELT dura 3 meses): instalada em, trocar em, vida usada e
+             situação (Em dia / Atenção / Trocar). "Trocada hoje" registra a troca e salva. Salvam junto com o equipamento.
+    Botões: Salvar · Salvar e adicionar outro · Salvar e continuar editando · Remover · Abrir NRE · Histórico.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Equipamentos";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Equipamentos";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = Model.Equip.Id > 0 ? Model.Equip.Descricao : "Adicionar";
+    var ro = !Model.PodeEditar;
+    var hoje = DateTime.Today;
+}
+<form method="post" class="form-layout" id="formEquip">
+    <input type="hidden" id="abaAtiva" name="AbaAtiva" value="@Model.AbaAtiva" />
+    <div class="cartao">
+        <ul class="nav abas" role="tablist">
+            <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#aba-dados">Dados do equipamento</button></li>
+            <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#aba-preditiva">Manutenção preditiva (@Model.Pecas.Count)</button></li>
+        </ul>
+        <div asp-validation-summary="All" class="text-danger mt-3"></div>
+        <fieldset disabled="@ro" class="tab-content">
+            <div class="tab-pane fade show active painel-form" id="aba-dados">
+                @* Código do sistema: gerado no cadastro (prefixo do prédio + sigla do nome + número) e fixo depois. No cadastro a tela mostra a prévia. *@
+                <div class="campo">
+                    <label asp-for="Equip.Codigo">Código</label>
+                    @if (Model.Equip.Id == 0)
+                    {
+                        <input class="form-control" asp-for="Equip.Codigo" readonly placeholder="Gerado ao digitar o nome e o prédio" data-codigo-de="#Equip_Nome" data-codigo-predio="#Equip_Predio" data-codigo-url="@Url.Page("Editar", "Codigo")" />
+                    }
+                    else
+                    {
+                        <input class="form-control" asp-for="Equip.Codigo" readonly />
+                    }
+                </div>
+                <div class="campo"><label class="obrig" asp-for="Equip.Nome">Nome</label><input class="form-control" asp-for="Equip.Nome" required maxlength="120" /></div>
+                <div class="campo"><label asp-for="Equip.Modelo">Modelo</label><input class="form-control" asp-for="Equip.Modelo" maxlength="80" /></div>
+                <div class="campo">
+                    <label asp-for="Equip.Irf">IRF</label>
+                    <div>
+                        <input class="form-control" asp-for="Equip.Irf" maxlength="40" />
+                        <div class="ajuda">Só nas máquinas que vieram da Samsung: o número do IRF. Nas outras, deixe em branco.</div>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label class="obrig" asp-for="Equip.Predio">Prédio</label>
+                    <div>
+                        <input class="form-control" asp-for="Equip.Predio" list="predios" required maxlength="80" />
+                        <datalist id="predios">@foreach (var p in Model.Predios) { <option value="@p"></option> }</datalist>
+                        <div class="ajuda">Prédio onde o equipamento fica.</div>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label class="obrig" asp-for="Equip.Localizacao">Localização</label>
+                    <div>
+                        <input class="form-control" asp-for="Equip.Localizacao" list="locais" required maxlength="80" />
+                        <datalist id="locais">@foreach (var l in Model.Localizacoes) { <option value="@l"></option> }</datalist>
+                        <div class="ajuda">Linha de produção onde o equipamento fica.</div>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label asp-for="Equip.Status">Status</label>
+                    <select class="form-select" asp-for="Equip.Status">
+                        @foreach (var s in Textos.StatusEquipamentoOpcoes) { <option value="@s">@s.Nome()</option> }
+                    </select>
+                </div>
+                <div class="campo">
+                    <label asp-for="Equip.CelulaId">Área</label>
+                    <select class="form-select" asp-for="Equip.CelulaId" asp-items="@(new SelectList(Model.Celulas, "Id", "Nome"))"><option value="">—</option></select>
+                </div>
+                @* NRE desta máquina (Pages/Nre): o que já foi pedido para ela e quanto foi gasto. *@
+                @if (Model.Equip.Id > 0 && Model.Ve("nre"))
+                {
+                    <h6 class="titulo-doc mt-2">NRE desta máquina</h6>
+                    @if (Model.Nres.Any())
+                    {
+                        <div class="tabela-rolagem">
+                            <table class="tabela-doc">
+                                <thead><tr><th>NRE</th><th>Tipo</th><th>Status</th><th class="text-end">Valor</th><th>Aberta em</th></tr></thead>
+                                <tbody>
+                                    @foreach (var n in Model.Nres)
+                                    {
+                                        <tr class="linha-clicavel" data-href="@Url.Page("/Nre/Editar", new { id = n.Id })">
+                                            <td class="text-nowrap">@n.Numero</td>
+                                            <td>@n.Tipo.Nome()</td>
+                                            <td><span class="@n.Status.Css()">@n.Status.Nome()</span></td>
+                                            <td class="text-end text-nowrap">@n.Total().Reais()</td>
+                                            <td class="text-nowrap">@n.CriadaEm.ToString("dd/MM/yyyy")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="contagem">Gasto com NRE nesta máquina (aprovadas, em execução e concluídas): <b>@Model.GastoNre.Reais()</b></p>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-0">Nenhuma NRE aberta para esta máquina.</p>
+                    }
+                }
+            </div>
+
+            @* Manutenção preditiva: uma linha por peça. A data da troca e a situação são calculadas (Modelos/Entidades.cs → PecaPreditiva).
+               Colunas: Peça · Dura (número + dias/semanas/meses/anos) · Instalada / trocada em · botões; embaixo a vida útil
+               (barra + situação). Estilos: estilos.css "Manutenção preditiva". *@
+            <div class="tab-pane fade painel-form" id="aba-preditiva">
+                @* Uma frase só (sem quebra de linha nem <b>): assim o wwwroot/js/traducao.js acha a frase inteira para traduzir. *@
+                <p class="text-muted small">Peças desta máquina que se gastam com o tempo (ex.: BELT). Informe quanto a peça dura e quando foi instalada: o sistema calcula quando trocar. Atenção = já usou @PecaPreditiva.AtencaoPercentual% da vida útil. Trocar = chegou a data da troca. Ao trocar a peça, clique em "Trocada hoje".</p>
+                <div class="preditiva preditiva-titulos d-none d-md-grid"><span>Peça</span><span>Dura</span><span></span><span>Instalada / trocada em</span><span></span></div>
+                <div id="listaPreditiva">
+                    @for (var i = 0; i < Model.Pecas.Count; i++)
+                    {
+                        var p = Model.Pecas[i];
+                        var c = p.Calculo();
+                        <div class="preditiva">
+                            <input class="form-control" data-campo="Nome" name="Pecas[@i].Nome" value="@p.Nome" placeholder="Peça (ex.: BELT)" maxlength="80" />
+                            <input type="hidden" data-campo="Id" name="Pecas[@i].Id" value="@p.Id" />
+                            <input class="form-control" data-campo="VidaUtil" name="Pecas[@i].VidaUtil" value="@p.VidaUtil" type="number" min="1" max="9999" step="1" inputmode="numeric" placeholder="Qtd." aria-label="Quanto dura" />
+                            <select class="form-select" data-campo="Unidade" name="Pecas[@i].Unidade" aria-label="Unidade">
+                                @foreach (var u in Enum.GetValues<UnidadeVida>()) { <option value="@u" selected="@(u == p.Unidade)">@u.Nome()</option> }
+                            </select>
+                            <input class="form-control" data-campo="InstaladaEm" name="Pecas[@i].InstaladaEm" value="@p.InstaladaEm?.ToString("yyyy-MM-dd")" type="date" max="@hoje.ToString("yyyy-MM-dd")" aria-label="Instalada / trocada em" />
+                            <div class="preditiva-vida">
+                                @if (c != null)
+                                {
+                                    var sit = c.Situacao(hoje);
+                                    var resta = Math.Max(0, 100 - c.PercentualUsado(hoje));
+                                    var falta = c.DiasRestantes(hoje);
+                                    // Barra da vida restante (como uma bateria): cheia e verde quando a peça é nova, encolhe com o tempo,
+                                    // amarela em Atenção e vermelha cheia quando chega a data da troca.
+                                    var cor = sit switch { SituacaoPrazo.EmDia => "var(--ok)", SituacaoPrazo.Atencao => "var(--amarelo)", _ => "var(--atrasada)" };
+                                    var largura = sit == SituacaoPrazo.Atrasada ? 100 : Math.Max(resta, 2);
+                                    <div class="barra-fundo" title="@resta% de vida útil restante"><div class="barra" style="width:@largura%;background:@cor"></div></div>
+                                    <div class="small">
+                                        <span class="@sit.Css()">@sit.NomePeca()</span> · <span>trocar em @c.TrocarEm.ToString("dd/MM/yyyy")</span>
+                                        · <span>@(falta > 0 ? $"faltam {falta} dia(s)" : falta == 0 ? "trocar hoje" : $"atrasada {-falta} dia(s)")</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="small text-muted">Calculada ao salvar</div>
+                                }
+                            </div>
+                            <div class="preditiva-botoes">
+                                @if (p.Id != null && !ro)
+                                {
+                                    <button class="btn-ms b-verde" name="acao" value="continuar" data-trocada-hoje title="Registra a troca com a data de hoje e salva">Trocada hoje</button>
+                                }
+                                @if (!ro) { <button type="button" class="btn btn-outline-danger" data-remover-linha=".preditiva" title="Remover peça">@Icones.Svg("x", 16)</button> }
+                            </div>
+                        </div>
+                    }
+                </div>
+                @if (!Model.Pecas.Any()) { <p class="text-muted small mb-0" id="semPreditiva">Nenhuma peça cadastrada.</p> }
+                @if (!ro)
+                {
+                    <button type="button" class="btn-ms b-azul mt-2" data-adicionar="tplPreditiva" data-destino="listaPreditiva">@Icones.Svg("mais") Adicionar peça</button>
+                }
+            </div>
+        </fieldset>
+    </div>
+    <div class="lado">
+        @if (!ro)
+        {
+            <button class="btn-ms b-verde" name="acao" value="salvar">Salvar</button>
+            <button class="btn-ms b-azul" name="acao" value="outro">Salvar e adicionar outro(a)</button>
+            <button class="btn-ms b-azul" name="acao" value="continuar">Salvar e continuar editando</button>
+            @if (Model.Equip.Id > 0)
+            {
+                <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-confirmar="Remover este equipamento?" formnovalidate>Remover</button>
+            }
+        }
+        @if (Model.Equip.Id > 0)
+        {
+            <div class="sep"></div>
+            @if (Model.Ve("nre") && Model.Pode("nre"))
+            {
+                <a class="btn-ms b-azul" asp-page="/Nre/Editar" asp-route-equipamento="@Model.Equip.Id">@Icones.Svg("nre", 16) Abrir NRE</a>
+            }
+            <a class="btn-ms b-cinza" asp-page="/Historico/Index" asp-route-entidade="Equipamento" asp-route-id="@Model.Equip.Id">Histórico</a>
+        }
+    </div>
+</form>
+
+<template id="tplPreditiva">
+    <div class="preditiva">
+        <input class="form-control" data-campo="Nome" placeholder="Peça (ex.: BELT)" maxlength="80" />
+        <input type="hidden" data-campo="Id" />
+        <input class="form-control" data-campo="VidaUtil" type="number" min="1" max="9999" step="1" inputmode="numeric" placeholder="Qtd." aria-label="Quanto dura" />
+        <select class="form-select" data-campo="Unidade" aria-label="Unidade">
+            @foreach (var u in Enum.GetValues<UnidadeVida>()) { <option value="@u" selected="@(u == UnidadeVida.Meses)">@u.Nome()</option> }
+        </select>
+        <input class="form-control" data-campo="InstaladaEm" type="date" value="@hoje.ToString("yyyy-MM-dd")" max="@hoje.ToString("yyyy-MM-dd")" aria-label="Instalada / trocada em" />
+        <div class="preditiva-vida"><div class="small text-muted">Calculada ao salvar</div></div>
+        <div class="preditiva-botoes">
+            <button type="button" class="btn btn-outline-danger" data-remover-linha=".preditiva" title="Remover peça">@Icones.Svg("x", 16)</button>
+        </div>
+    </div>
+</template>
+
+@section Scripts {
+    <script>
+        // Manutenção preditiva: peça nova esconde o aviso "Nenhuma peça"; "Trocada hoje" põe a data de hoje e salva
+        // (o botão é o "Salvar e continuar editando" daquela linha); ao enviar, renumera os índices (Pecas[0], Pecas[1]...).
+        document.querySelector('[data-adicionar="tplPreditiva"]')?.addEventListener('click', () => document.getElementById('semPreditiva')?.remove());
+        document.getElementById('listaPreditiva').addEventListener('click', e => {
+            const b = e.target.closest('[data-trocada-hoje]');
+            if (!b) return;
+            const d = new Date(), dois = n => String(n).padStart(2, '0');
+            b.closest('.preditiva').querySelector('[data-campo=InstaladaEm]').value = `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
+        });
+        document.getElementById('formEquip').addEventListener('submit', () => {
+            document.querySelectorAll('#listaPreditiva .preditiva').forEach((linha, i) => {
+                linha.querySelectorAll('[data-campo]').forEach(c => c.name = `Pecas[${i}].${c.dataset.campo}`);
+            });
+        });
+    </script>
+}

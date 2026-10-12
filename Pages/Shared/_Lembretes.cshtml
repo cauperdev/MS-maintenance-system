@@ -1,0 +1,34 @@
+@using System.Security.Claims
+@inject MS.BancoDeDados.AppDb Db
+@*
+    ============================================================================
+    SINO DE LEMBRETES (topo da tela) — número vermelho + lista das 8 OS mais próximas + "Ver todos".
+    Quais OS entram no sino: Servicos/Lembretes.cs. Cores e tamanhos: estilos.css seção 14.
+    ============================================================================
+*@
+@{
+    var grupo = Enum.TryParse<Grupo>(User.FindFirstValue(ClaimTypes.Role), out var g) ? g : Grupo.Visitante;
+    var usuarioId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid) ? uid : 0;
+    var (total, lista) = await Lembretes.ListarAsync(Db, grupo, usuarioId, AreaEscolhida.Ler(Context));
+    var agora = DateTime.Now;
+}
+@* Sino de lembretes: OS cujo "Lembrar a partir de" já chegou. *@
+<div class="dropdown">
+    <button class="btn-usuario sino" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Lembretes" title="Lembretes">
+        @Icones.Svg("sino", 20)
+        @if (total > 0) { <span class="sino-qtd">@(total > 99 ? "99+" : total.ToString())</span> }
+    </button>
+    <div class="dropdown-menu dropdown-menu-end lembretes-menu">
+        <div class="lembretes-titulo">Lembretes</div>
+        @foreach (var o in lista)
+        {
+            var atrasada = o.Atrasada(agora);
+            <a class="dropdown-item lembrete" href="@Url.Page("/Ordens/Editar", new { id = o.Id })">
+                <b>@o.Numero</b> <span>· @o.Equipamento?.Descricao</span>
+                <small class="d-block @(atrasada ? "st-atrasada" : "text-muted")">Prazo @o.DataConclusao.ToString("dd/MM/yyyy")@(atrasada ? " · Atrasada" : "")</small>
+            </a>
+        }
+        @if (total == 0) { <span class="dropdown-item-text text-muted small">Nenhum lembrete.</span> }
+        @if (total > lista.Count) { <a class="dropdown-item text-center small fw-bold" href="@Url.Page("/Ordens/Index", new { Lembretes = true })">Ver todos (@total)</a> }
+    </div>
+</div>

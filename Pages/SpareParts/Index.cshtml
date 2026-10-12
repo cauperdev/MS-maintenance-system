@@ -1,0 +1,107 @@
+@page
+@model MS.Pages.SpareParts.IndexModel
+@*
+    ============================================================================
+    TELA: SPARE PARTS (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. quadro do alto — "Nova peça" ou "Alterando a peça X" (código, descrição, equipamento, quantidade +
+            Salvar/Cancelar; Equipamento = tipo de máquina, só o nome: clicar abre a lista, digitar pesquisa e dá para
+            escrever outro — data-pesquisa, interacoes.js seção 12, texto livre)
+            · 2. pesquisa · 3. Remover selecionados, Baixar modelo, Importar Excel (janela _ModalImportar) e Extração
+            · 4. tabela: código, descrição, equipamento, quantidade
+            (clicar na linha abre a peça no quadro do alto). Cores e tamanhos: estilos.css "Spare Parts".
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Spare Parts";
+    ViewData["Trilha"] = "Manutenção";
+    var e = Model.Editando;
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+}
+<p class="subtitulo-pagina">Cadastro das peças de reposição: código, descrição, equipamento e quantidade em estoque.</p>
+
+@if (Model.PodeEditar)
+{
+    <form method="post" asp-page-handler="Salvar" asp-route-id="@e?.Id" asp-route-q="@Model.Q" class="cartao peca-quadro @(e != null ? "editando" : "")">
+        <div class="peca-quadro-titulo">
+            @if (e != null) { <span>Alterando a peça</span> <b>@e.Codigo</b> }
+            else { <span>Nova peça</span> }
+        </div>
+        <div class="peca-campos">
+            <div class="peca-codigo">
+                <label for="codigo">Código</label>
+                <input class="form-control" id="codigo" name="codigo" value="@e?.Codigo" required maxlength="60" autocomplete="off" />
+            </div>
+            <div class="peca-descricao">
+                <label for="descricao">Descrição</label>
+                <input class="form-control" id="descricao" name="descricao" value="@e?.Descricao" required maxlength="200" autocomplete="off" />
+            </div>
+            <div class="peca-equip">
+                <label for="maquina">Equipamento</label>
+                <input class="form-control" id="maquina" name="maquina" value="@e?.Maquina" list="tiposMaquina" data-pesquisa maxlength="120" autocomplete="off" placeholder="Ex.: ADESIVADORA" />
+                <datalist id="tiposMaquina">@foreach (var t in Model.TiposDeMaquina) { <option value="@t"></option> }</datalist>
+            </div>
+            <div class="peca-qtd">
+                <label for="quantidade">Quantidade</label>
+                <input class="form-control" id="quantidade" name="quantidade" type="number" step="any" value="@(e?.Estoque.ToString("0.##", inv))" />
+            </div>
+            <div class="peca-botoes">
+                <button class="btn-ms b-verde" type="submit">@Icones.Svg(e != null ? "ok" : "mais", 16) @(e != null ? "Salvar" : "Adicionar")</button>
+                @if (e != null) { <a class="btn-ms b-cinza" asp-page="Index" asp-route-q="@Model.Q">Cancelar</a> }
+            </div>
+        </div>
+    </form>
+}
+
+<form method="get" class="filtros">
+    <input class="form-control" asp-for="Q" placeholder="Código, descrição ou equipamento" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+
+<form method="post">
+    <div class="barra-acoes">
+        @if (Model.PodeEditar)
+        {
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" asp-route-q="@Model.Q" data-exige-selecao=".sel-peca" data-confirmar="Remover {n} peça(s) marcada(s)? As que têm histórico ficam inativas.">@Icones.Svg("lixo") Remover selecionados</button>
+        }
+        <a class="btn-ms b-cinza d-none d-lg-inline-flex" asp-page-handler="Modelo">@Icones.Svg("arquivo") Baixar modelo</a>
+        @if (Model.PodeEditar)
+        {
+            <button type="button" class="btn-ms b-azul d-none d-lg-inline-flex" data-bs-toggle="modal" data-bs-target="#modalImportar">@Icones.Svg("enviar") Importar Excel</button>
+        }
+        <a class="btn-ms b-verde" href="@Url.Page("Index", "Extracao", new { Model.Q })">@Icones.Svg("baixar") Extração</a>
+    </div>
+
+    <div class="cartao">
+        <table class="tabela tabela-cards tabela-pecas">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th class="col-sel"><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-peca" aria-label="Marcar todas" /></th> }
+                    <th class="esq">Código</th>
+                    <th class="esq">Descrição</th>
+                    <th class="esq">Equipamento</th>
+                    <th class="dir">Quantidade</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model.Lista)
+                {
+                    // Clicar na linha abre a peça no quadro do alto (só quem pode editar).
+                    var href = Model.PodeEditar ? Url.Page("Index", new { editar = p.Id, Model.Q }) : null;
+                    <tr class="@(href != null ? "linha-clicavel" : "") @(e?.Id == p.Id ? "destaque" : "")" data-href="@href">
+                        @if (Model.PodeEditar) { <td class="col-sel sem-rotulo"><input type="checkbox" class="form-check-input sel-peca" name="ids" value="@p.Id" aria-label="Marcar @p.Codigo" /></td> }
+                        <td class="esq" data-rotulo="Código"><b class="nome-azul">@p.Codigo</b></td>
+                        <td class="esq" data-rotulo="Descrição">@p.Descricao</td>
+                        <td class="esq" data-rotulo="Equipamento">@(p.Maquina ?? "-")</td>
+                        <td class="dir @(p.Estoque < 0 ? "st-atrasada" : "")" data-rotulo="Quantidade">@p.Estoque.Qtd()</td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="5" class="text-muted">Nenhuma peça encontrada.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+<p class="contagem">@Model.Lista.Count @(Model.Lista.Count == 1 ? "peça" : "peças")</p>
+@if (Model.PodeEditar)
+{
+    <partial name="_ModalImportar" model="@("Código novo vira peça nova; código que já existe é atualizado. Equipamento e Quantidade são opcionais: quantidade em branco não muda o estoque.")" />
+}

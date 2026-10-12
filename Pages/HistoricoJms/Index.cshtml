@@ -1,0 +1,126 @@
+@page
+@model MS.Pages.HistoricoJms.IndexModel
+@*
+    ============================================================================
+    TELA: HISTÓRICO JMS — Work Orders do JMS antigo (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros (ano, mês, localização, célula, periodicidade, pesquisa) · 2. botões (Remover, Baixar modelo,
+            Importar Excel, Extração) · 3. cartões (celular/tablet) · 4. tabela (computador) · 5. páginas (‹ 1 / N ›)
+    Só consulta: não abre detalhe nem edita uma Work Order (os dados vêm do JMS pelo Importar Excel).
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Histórico JMS";
+    ViewData["Trilha"] = "Manutenção";
+    object Filtros(int pagina) => new { Model.Ano, Model.Mes, Model.Local, Model.Periodicidade, Model.Q, Pagina = pagina };
+    string Data(DateTime? d) => d?.ToString("dd/MM/yyyy") ?? "-";
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Ano">
+        <option value="">Ano da manutenção</option>
+        @foreach (var a in Model.Anos) { <option value="@a">@a</option> }
+    </select>
+    <select class="form-select" asp-for="Mes">
+        <option value="">Mês da manutenção</option>
+        @for (var m = 1; m <= 12; m++) { <option value="@m">@Textos.Meses[m - 1]</option> }
+    </select>
+    <select class="form-select" asp-for="Local">
+        <option value="">Localização</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <select class="form-select" asp-for="Periodicidade">
+        <option value="">Periodicidade</option>
+        @foreach (var p in Model.Periodicidades) { <option value="@p">@p</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="Work Order, código, equipamento ou técnico" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+
+<form method="post">
+    @* Filtros da tela: com "marcar todas" marcado, Remover apaga todas as Work Orders da lista filtrada (todas as páginas). *@
+    <input type="hidden" name="todos" id="removerTodos" value="false" />
+    <input type="hidden" name="Ano" value="@Model.Ano" />
+    <input type="hidden" name="Mes" value="@Model.Mes" />
+    <input type="hidden" name="Local" value="@Model.Local" />
+    <input type="hidden" name="Periodicidade" value="@Model.Periodicidade" />
+    <input type="hidden" name="Q" value="@Model.Q" />
+    <div class="barra-acoes">
+        @if (Model.PodeEditar)
+        {
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-exige-selecao=".sel-wo" data-confirmar="Remover {n} work order(s) do JMS marcada(s)?" data-confirmar-todos="Remover TODAS as {n} work orders do JMS da lista (todas as páginas)?">@Icones.Svg("lixo") Remover selecionados</button>
+            <a class="btn-ms b-cinza d-none d-lg-inline-flex" asp-page-handler="Modelo">@Icones.Svg("arquivo") Baixar modelo</a>
+            <button type="button" class="btn-ms b-azul d-none d-lg-inline-flex" data-bs-toggle="modal" data-bs-target="#modalImportar">@Icones.Svg("enviar") Importar Excel</button>
+        }
+        <a class="btn-ms b-verde" href="@Url.Page("Index", "Extracao", new { Model.Ano, Model.Mes, Model.Local, Model.Periodicidade, Model.Q })">@Icones.Svg("baixar") Extração</a>
+    </div>
+
+    @* Celular e tablet: cartões; computador: tabela. *@
+    <div class="cartoes d-lg-none">
+        @foreach (var w in Model.Lista)
+        {
+            <div class="cartao-os">
+                @if (Model.PodeEditar) { <input type="checkbox" class="form-check-input sel-wo mb-2" name="ids" value="@w.Id" aria-label="Marcar @w.WorkOrder" /> }
+                <div class="ticket neutro">
+                    <div><span>WO:</span><span>@w.WorkOrder</span></div>
+                    <div><span>Equip.:</span><span>@w.Codigo</span></div>
+                    <div><span>Linha:</span><span>@(w.Localizacao ?? "-")</span></div>
+                </div>
+                <div class="titulo">@(w.Equipamento ?? w.Codigo)</div>
+                <div class="linha"><span>@(w.Periodicidade ?? "-")</span><span>@(w.Tipo ?? "")</span></div>
+                <div class="linha"><span>Data da manutenção: <b>@Data(w.DataManutencao)</b></span></div>
+                <div class="linha"><span>Técnico: @(w.Tecnico ?? "-")</span></div>
+            </div>
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted">Nenhuma work order encontrada.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-wo" data-total="@Model.Total" data-todos="#removerTodos" aria-label="Marcar todas" /></th> }
+                    <th>Work Order</th><th>Código</th><th>Equipamento</th><th>Periodicidade</th><th>Tipo</th><th>Localização</th><th>Área</th>
+                    <th>Técnico responsável</th><th>Coordenador responsável</th><th>Criada em</th><th>Data da manutenção</th><th>Tempo sugerido (h)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var w in Model.Lista)
+                {
+                    <tr>
+                        @if (Model.PodeEditar) { <td class="sem-rotulo acoes-linha"><input type="checkbox" class="form-check-input sel-wo" name="ids" value="@w.Id" aria-label="Marcar @w.WorkOrder" /></td> }
+                        <td data-rotulo="Work Order" class="text-nowrap">@w.WorkOrder</td>
+                        <td data-rotulo="Código" class="text-nowrap">@w.Codigo</td>
+                        <td data-rotulo="Equipamento">@(w.Equipamento ?? "-")</td>
+                        <td data-rotulo="Periodicidade">@(w.Periodicidade ?? "-")</td>
+                        <td data-rotulo="Tipo">@(w.Tipo ?? "-")</td>
+                        <td data-rotulo="Localização">@(w.Localizacao ?? "-")</td>
+                        <td data-rotulo="Área">@(w.Celula ?? "-")</td>
+                        <td data-rotulo="Técnico">@(w.Tecnico ?? "-")</td>
+                        <td data-rotulo="Coordenador">@(w.Coordenador ?? "-")</td>
+                        <td data-rotulo="Criada em" class="text-nowrap">@Data(w.CriadaEm)</td>
+                        <td data-rotulo="Data da manutenção" class="text-nowrap">@Data(w.DataManutencao)</td>
+                        <td data-rotulo="Tempo sugerido (h)">@(w.TempoSugerido?.ToString("0.##") ?? "-")</td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="13" class="text-muted">Nenhuma work order encontrada.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center mt-2 gap-2">
+    <span class="contagem">@Model.Total work orders</span>
+    @if (Model.Paginas > 1)
+    {
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(Model.Pagina == 1 ? "disabled" : "")"><a class="page-link" href="@Url.Page("Index", Filtros(Model.Pagina - 1))">‹</a></li>
+                <li class="page-item disabled"><span class="page-link">@Model.Pagina / @Model.Paginas</span></li>
+                <li class="page-item @(Model.Pagina == Model.Paginas ? "disabled" : "")"><a class="page-link" href="@Url.Page("Index", Filtros(Model.Pagina + 1))">›</a></li>
+            </ul>
+        </nav>
+    }
+</div>
+@if (Model.PodeEditar)
+{
+    <partial name="_ModalImportar" model="@("Também serve a aba JMS da planilha MANUTENÇÃO PREVENTIVA (colunas do JMS em inglês). O sistema lê a aba JMS ou, se não houver, a primeira. Work Order que já existe é atualizada e a nova é criada: importar de novo não duplica.")" />
+}

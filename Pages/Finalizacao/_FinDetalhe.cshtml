@@ -1,0 +1,81 @@
+@model MS.Modelos.Finalizacao
+@*
+    ============================================================================
+    FICHA DA FINALIZAÇÃO — pedaço reaproveitado pelas telas Ver, Editar (revisão) e Imprimir.
+    Partes: 1. grade de campos · 2. checklist gravado na conclusão · 3. peças · 4. fotos antes/depois (na impressão, só com "Imprimir com fotos")
+    Cores e tamanhos: estilos.css seção 12.
+    ============================================================================
+*@
+@{
+    var f = Model;
+    var foraDoPrazo = f.ConcluidaEm > f.DataConclusao;
+    // Checklist gravado na conclusão, uma tarefa por linha: "[x] feita" ou "[ ] não feita" ("[X]" desde que o texto é gravado em maiúscula).
+    var tarefas = f.Checklist.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(l => l.Length > 3 && l[0] == '[' && l[2] == ']' ? (Feita: l[1] is 'x' or 'X', Texto: l[3..].Trim()) : (Feita: false, Texto: l))
+        .ToList();
+    // Peças gravadas como "2 x [código] Correia" (Regras.LerLinhaPeca).
+    var pecas = f.Pecas.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(Regras.LerLinhaPeca)
+        .ToList();
+}
+@* Ficha da finalização (visualização, revisão e impressão): igual à da OS. *@
+<div class="ficha">
+    <div><span class="rotulo">Número da OS</span><span class="valor"><b>@f.NumeroOS</b></span></div>
+    <div><span class="rotulo">Equipamento</span><span class="valor">@f.Equipamento?.Descricao</span></div>
+    @* Número de série: só aparece quando a máquina tem. *@
+    @if (f.Equipamento?.NumeroSerie is { Length: > 0 } serie) { <div><span class="rotulo">Número de série</span><span class="valor">@serie</span></div> }
+    <div><span class="rotulo">Prédio</span><span class="valor">@(f.Equipamento?.Predio is { Length: > 0 } predio ? predio : "-")</span></div>
+    <div><span class="rotulo">Localização</span><span class="valor">@f.Equipamento?.Localizacao</span></div>
+    <div><span class="rotulo">Periodicidade</span><span class="valor">@f.Tipo.Nome()</span></div>
+    <div><span class="rotulo">Técnico responsável</span><span class="valor">@(f.Tecnico?.NomeCompleto ?? "-")</span></div>
+    <div><span class="rotulo">Coordenador responsável</span><span class="valor">@(f.Coordenador?.NomeCompleto ?? "-")</span></div>
+    <div><span class="rotulo">Status da revisão</span><span class="valor"><span class="@f.StatusRevisao.Css()">@f.StatusRevisao.Nome()</span></span></div>
+    <div><span class="rotulo">Data da manutenção</span><span class="valor">@f.DataConclusao.ToString("dd/MM/yyyy")</span></div>
+    <div><span class="rotulo">Concluída em</span><span class="valor @(foraDoPrazo ? "st-atrasada" : "")">@f.ConcluidaEm.Data() @(foraDoPrazo ? "(fora do prazo)" : "")</span></div>
+    <div><span class="rotulo">Aprovada em</span><span class="valor">@f.AprovadaEm.Data()</span></div>
+    <div><span class="rotulo">Aprovada por</span><span class="valor">@(f.AprovadaPor?.NomeCompleto ?? "-")</span></div>
+</div>
+
+@* Tarefas de NR (EHS) no fim, em vermelho, com a marcação gravada na conclusão (Shared/_LinhaChecklist).
+   Sem o título "Checklist" e com letra menor (tabela-checklist) para caber mais numa página. *@
+<table class="tabela-doc tabela-checklist">
+    <thead><tr><th class="col-caixa"></th><th>Tarefa</th></tr></thead>
+    <tbody>
+        @foreach (var t in tarefas.OrderBy(t => Ehs.EhNr(t.Texto))) { <partial name="_LinhaChecklist" model="(t.Texto, t.Feita)" /> }
+        @if (tarefas.Count == 0) { <tr><td colspan="2" class="text-muted text-center">Sem tarefas.</td></tr> }
+    </tbody>
+</table>
+
+@if (pecas.Any())
+{
+    <h6 class="titulo-doc">Peças utilizadas</h6>
+    <table class="tabela-doc">
+        <thead><tr><th class="col-codigo">Código</th><th>Peça</th><th class="col-marca">Qtd.</th></tr></thead>
+        <tbody>@foreach (var p in pecas) { <tr><td class="col-codigo">@(p.Codigo == "" ? "-" : p.Codigo)</td><td>@p.Peca</td><td class="col-marca">@p.Qtd</td></tr> }</tbody>
+    </table>
+}
+
+@{
+    // Impressão: só leva as fotos quando pedida com fotos (botão "Imprimir com fotos").
+    var impressao = ViewData["Impressao"] is true;
+    var mostrarFotos = !impressao || ViewData["ImprimirFotos"] is true;
+}
+@if (mostrarFotos)
+{
+    <h6 class="titulo-doc">Imagens</h6>
+    @* Antes e Depois lado a lado (em tela estreita, um embaixo do outro). *@
+    <div class="row">
+        @foreach (var tipo in new[] { TipoImagem.Antes, TipoImagem.Depois })
+        {
+            var imgs = f.Imagens.Where(i => i.Tipo == tipo).ToList();
+            <div class="@(impressao ? "col-6" : "col-md-6")">
+                <div class="small fw-bold">@tipo</div>
+                <div class="galeria mb-2">
+                    @* Na impressão a foto carrega na hora (sem "lazy"), senão sai em branco no papel. *@
+                    @foreach (var i in imgs) { <figure><a class="foto-quadro" href="/Foto/@i.Id" target="_blank"><img src="/Foto/@i.Id" alt="Foto @tipo" loading="@(impressao ? "eager" : "lazy")" /><span class="foto-hora">@i.Hora().ToString("dd/MM/yyyy HH:mm")</span></a></figure> }
+                    @if (!imgs.Any()) { <span class="text-muted small text-center w-100">Sem fotos.</span> }
+                </div>
+            </div>
+        }
+    </div>
+}

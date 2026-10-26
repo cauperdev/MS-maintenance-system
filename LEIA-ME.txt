@@ -1,0 +1,90 @@
+﻿MS - GESTÃO DE MANUTENÇÃO
+==========================
+
+COMO LIGAR O SISTEMA NESTE COMPUTADOR
+-------------------------------------
+1. Antes de extrair: clique com o botão direito no arquivo .zip > Propriedades >
+   marque "Desbloquear" (se aparecer) > OK. Isso evita avisos do Windows.
+2. Clique com o botão direito no .zip > "Extrair tudo..." e escolha uma pasta sua
+   (ex.: Documentos ou Área de Trabalho). Não use "Arquivos de Programas" (pede
+   administrador) e não rode de dentro do .zip.
+3. Abra a pasta extraída e dê dois cliques em "iniciar.bat".
+4. O navegador abre sozinho em http://localhost:5100
+   (se abrir antes do sistema terminar de ligar, aperte F5).
+5. Deixe a janela preta aberta enquanto usa. Fechar a janela desliga o sistema.
+
+Não precisa de permissão de administrador: o "iniciar.bat" abre o sistema só neste computador.
+Nesta cópia a pasta "programa" não vem pronta: o "iniciar.bat" roda pelo código-fonte (precisa do
+.NET 10 SDK). Para gerar a pasta "programa", rode o "atualizar-programa.bat".
+
+
+AVISOS DO WINDOWS NA PRIMEIRA VEZ (nenhum precisa de administrador)
+---------------------------------
+- Se você marcou "Desbloquear" no passo 1, normalmente não aparece aviso nenhum.
+- "O Windows protegeu o computador": clique em "Mais informações" > "Executar assim mesmo".
+- "Deseja executar este arquivo?": clique em "Executar".
+- Se o computador for da empresa e o Windows disser que o programa foi bloqueado pelo
+  administrador/TI, só a TI pode liberar.
+
+
+LOGIN
+-----
+Usuários de demonstração (criados com o banco, na primeira vez que o sistema liga):
+  admin / admin123 ............ Administrador
+  coordenador / 123456 ........ Coordenador
+  tecnico, tecnico2 / 123456 .. Técnico
+  auditor / 123456 ............ Auditor
+  visitante / 123456 .......... Visitante
+
+Usuários de demonstração (criados junto com um banco novo):
+
+    Usuário              Senha       Grupo
+    -------------------  ----------  -------------
+    admin                admin123    Administrador
+    coordenador          123456      Coordenador
+    tecnico / tecnico2   123456      Técnico
+    auditor              123456      Auditor
+    visitante            123456      Visitante
+
+Troque essas senhas antes de usar o sistema de verdade (tela Usuários).
+
+
+ONDE FICAM OS DADOS
+-------------------
+- dados\ms.db ....... banco (equipamentos, cronograma, OS, finalizações, usuários)
+- dados\fotos ........ fotos das OS
+Para fazer cópia de segurança: feche o sistema e copie a pasta "dados".
+Para levar os dados para outro computador: copie a pasta "dados" por cima da de lá
+(com o sistema fechado nos dois).
+
+
+CELULAR (MESMA REDE WI-FI)
+--------------------------
+O "iniciar.bat" abre o sistema só neste computador. Para usar no celular, ligue pelo
+"iniciar-na-rede.bat": a janela preta mostra o endereço (ex.: http://192.168.0.15:5100),
+que você abre no navegador do celular.
+Na primeira vez, o Firewall do Windows pergunta se pode liberar a rede. Isso pede
+administrador UMA vez. Sem essa permissão, o sistema continua funcionando normalmente
+neste computador pelo "iniciar.bat" (só o celular que não consegue abrir).
+
+Para os QR codes das etiquetas abrirem no celular: abra o arquivo "appsettings.json"
+no Bloco de Notas, preencha "EnderecoSistema" com esse endereço, por exemplo:
+    "EnderecoSistema": "http://192.168.0.15:5100"
+salve, feche e ligue o sistema de novo, e baixe a planilha de QR codes outra vez.
+
+
+SE ALGO DER ERRADO
+------------------
+- A janela preta fecha sozinha ou mostra erro de "porta em uso": o sistema já está
+  ligado em outra janela (ou outro programa usa a porta 5100). Feche a outra janela.
+- Use um só por vez: "iniciar.bat" OU "iniciar-na-rede.bat".
+- A página não abre: confira se a janela preta está aberta e aperte F5 no navegador.
+- Não abra o MS.exe direto da pasta "programa": use sempre o "iniciar.bat".
+
+
+PARA ALTERAR O SISTEMA (PROGRAMAÇÃO)
+------------------------------------
+O código-fonte completo está nesta mesma pasta. O arquivo LEIAME.md explica cada pasta
+e onde mexer. Para editar é preciso o VS Code e o .NET 10 SDK.
+Depois de alterar, feche o sistema e rode "atualizar-programa.bat" para recompilar
+a pasta "programa".

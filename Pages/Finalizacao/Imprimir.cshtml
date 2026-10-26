@@ -1,0 +1,16 @@
+@page "{id:int}"
+@model MS.Pages.Finalizacao.ImprimirModel
+@*
+    ============================================================================
+    TELA: FINALIZAÇÃO — folha de impressão  ·  lógica em Ver.cshtml.cs (ImprimirModel)
+    Usa o molde Shared/_Impressao.cshtml (ícone da marca, título e data).
+    Sem fotos por padrão; com "?fotos=1" (botão "Imprimir com fotos") a folha leva as fotos antes/depois.
+    ============================================================================
+*@
+@{
+    Layout = "_Impressao";
+    ViewData["Title"] = $"Finalização da {Model.Fin.NumeroOS} · {Model.Fin.ConcluidaEm:dd/MM/yyyy}";
+    ViewData["Impressao"] = true;
+    ViewData["ImprimirFotos"] = Request.Query["fotos"] == "1";
+}
+<partial name="_FinDetalhe" model="Model.Fin" />

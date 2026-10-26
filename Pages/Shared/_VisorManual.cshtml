@@ -1,0 +1,35 @@
+@*
+    ============================================================================
+    VISUALIZADOR DO MANUAL DA MÁQUINA (pedido do usuário em 19/10/2026) — o PDF abre DENTRO do MS (no Android o Chrome
+    baixaria o PDF em vez de abrir na página). Usado na OS (abre na página da tarefa), no Cronograma (o coordenador
+    escolhe a página: "Usar esta página" / "Tirar a página" / X = cancelar) e no cadastro do Equipamento.
+    Layout (escolhido pelo usuário em 19/10/2026, "ações embaixo", como app de celular):
+      em cima — nome do manual e o X (volta / cancela); embaixo dele, uma linha discreta (de que a página fala / dica);
+      no meio — a página; embaixo, fixos perto do dedão — ‹ Página n de N › e, no Cronograma, Tirar a página · Usar esta página.
+    Quem desenha as páginas: wwwroot/js/manual.js (pdf.js em wwwroot/lib/pdfjs). Estilo: estilos.css "Manual da máquina".
+    ============================================================================
+*@
+<div class="visor-manual" id="visorManual" hidden>
+    <div class="visor-janela" role="dialog" aria-modal="true" aria-labelledby="visorNome">
+        <div class="visor-barra">
+            <span class="visor-nome">@Icones.Svg("livro", 16) <span id="visorNome">Manual</span></span>
+            <button type="button" class="visor-x" id="visorFechar" title="Voltar">@Icones.Svg("x", 20)</button>
+        </div>
+        <div class="visor-dica" id="visorDica" hidden></div>
+        <div class="visor-area" id="visorArea">
+            <canvas id="visorCanvas"></canvas>
+            <div class="visor-msg" id="visorMsg" hidden></div>
+        </div>
+        <div class="visor-rodape">
+            <span class="visor-paginas">
+                <button type="button" class="btn-ms b-cinza" id="visorAnterior" title="Página anterior">@Icones.Svg("esquerda", 16)</button>
+                <span>Página <input type="number" id="visorPagina" min="1" value="1" /> de <b id="visorTotal">…</b></span>
+                <button type="button" class="btn-ms b-cinza" id="visorProxima" title="Próxima página">@Icones.Svg("direita", 16)</button>
+            </span>
+            <span class="visor-acoes" id="visorAcoes" hidden>
+                <button type="button" class="btn-ms b-contorno-vermelho" id="visorTirar">Tirar a página</button>
+                <button type="button" class="btn-ms b-verde" id="visorUsar">Usar esta página</button>
+            </span>
+        </div>
+    </div>
+</div>

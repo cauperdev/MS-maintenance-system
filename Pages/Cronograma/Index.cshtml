@@ -1,0 +1,118 @@
+@page
+@model MS.Pages.Cronograma.IndexModel
+@*
+    ============================================================================
+    TELA: CRONOGRAMA — lista de planos (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros (localização, célula, periodicidade, pesquisa) · 2. botões (Adicionar, Remover, Baixar modelo,
+            Importar Excel, Extração) · 3. cartões com etiqueta colorida (celular/tablet) · 4. tabela (computador)
+            · 5. páginas de 50 planos (Shared/_Paginacao.cshtml, como a lista de OS) · 6. janela Importar Excel
+            (Shared/_ModalImportar.cshtml)
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Cronograma";
+    ViewData["Trilha"] = "Manutenção";
+    object Filtros(int pagina) => new { Model.Local, Model.CelulaId, Model.Periodicidade, Model.Q, Pagina = pagina };
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Local">
+        <option value="">Localização</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <select class="form-select" asp-for="Periodicidade">
+        <option value="">Periodicidade</option>
+        @foreach (var p in Enum.GetValues<Periodicidade>()) { <option value="@p">@p.Nome()</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="Ordem de trabalho, código ou nome" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+<form method="post">
+    @* Com "marcar todos" marcado, Remover apaga todos os planos da lista filtrada (todas as páginas). *@
+    <input type="hidden" name="todos" id="removerTodos" value="false" />
+    <div class="barra-acoes barra-grade">
+        @if (Model.PodeEditar)
+        {
+            <a class="btn-ms b-verde" asp-page="Editar">@Icones.Svg("mais") Adicionar plano de manutenção</a>
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" asp-route-local="@Model.Local" asp-route-celulaid="@Model.CelulaId" asp-route-periodicidade="@Model.Periodicidade" asp-route-q="@Model.Q" data-exige-selecao=".sel-pl" data-confirmar="Remover {n} plano(s) marcado(s)? As OS deles (e as finalizações dessas OS) também serão apagadas." data-confirmar-todos="Remover TODOS os {n} planos da lista (todas as páginas)? As OS deles (e as finalizações dessas OS) também serão apagadas.">@Icones.Svg("lixo") Remover selecionados</button>
+            <button type="button" class="btn-ms b-azul d-none d-lg-inline-flex" data-bs-toggle="modal" data-bs-target="#modalImportar">@Icones.Svg("enviar") Importar Excel</button>
+        }
+        @* Cor por função: os que só baixam arquivo ficam brancos com borda azul, no fim. *@
+        <a class="btn-ms b-contorno-azul d-none d-lg-inline-flex" asp-page-handler="Modelo">@Icones.Svg("arquivo") Baixar modelo</a>
+        <a class="btn-ms b-contorno-azul" href="@Url.Page("Index", "Extracao", new { Model.Local, Model.CelulaId, Model.Periodicidade, Model.Q })">@Icones.Svg("baixar") Extração</a>
+    </div>
+    @* Celular e tablet: cartões com etiqueta colorida pela situação da OS do plano; computador: tabela. *@
+    <div class="legenda legenda-cores d-lg-none">
+        <span><span class="quadro em-dia"></span>Em dia</span>
+        <span><span class="quadro atencao"></span>Atenção</span>
+        <span><span class="quadro atrasada"></span>Atrasada</span>
+    </div>
+    @if (Model.PodeEditar && Model.Lista.Any())
+    {
+        <label class="marcar-cartoes d-lg-none">
+            <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-pl" data-total="@Model.Total" data-todos="#removerTodos" />
+            <span>Marcar todos</span><span class="text-muted">(@Model.Total)</span>
+        </label>
+    }
+    <div class="cartoes d-lg-none">
+        @foreach (var p in Model.Lista)
+        {
+            var temOs = Model.OsDoPlano.TryGetValue(p.Id, out var os);
+            var atrasada = temOs && os!.Atrasada(Model.Agora);
+            var cor = !temOs ? "neutro" : atrasada ? "atrasada" : (os!.DataConclusao.Date - Model.Agora.Date).Days <= 7 ? "atencao" : "em-dia";
+            <div class="cartao-os" data-href="@Url.Page("Editar", new { id = p.Id })">
+                @if (Model.PodeEditar) { <input type="checkbox" class="form-check-input sel-pl mb-2" name="ids" value="@p.Id" aria-label="Marcar @p.OrdemTrabalho" /> }
+                <div class="ticket @cor">
+                    <div><span>OS:</span><span>@p.OrdemTrabalho</span></div>
+                    <div><span>Nome:</span><span>@p.Equipamento?.Nome</span></div>
+                    <div><span>Código:</span><span>@p.Equipamento?.Codigo</span></div>
+                    <div><span>Linha:</span><span>@p.Equipamento?.Localizacao</span></div>
+                </div>
+                <div class="titulo">@p.Equipamento?.Descricao</div>
+                <div class="linha"><span>@p.Periodicidade.Nome()</span><span>Plano: @p.Nome</span></div>
+                @if (temOs)
+                {
+                    <div class="linha">
+                        <span>Data da manutenção: <b>@os!.DataConclusao.ToString("dd/MM/yyyy")</b></span>
+                        <span class="pilula @(atrasada ? "st-atrasada" : "pendente")">@(atrasada ? "Atrasada" : "Aberta")</span>
+                    </div>
+                }
+                <div class="botoes">
+                    <a asp-page="Editar" asp-route-id="@p.Id">@Icones.Svg("plano", 18) Editar</a>
+                    @if (temOs) { <a asp-page="/Ordens/Ver" asp-route-id="@os!.Id">@Icones.Svg("ver", 18) Ver OS</a> }
+                </div>
+            </div>
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted text-center">Nenhum plano encontrado.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-pl" data-total="@Model.Total" data-todos="#removerTodos" aria-label="Marcar todas" /></th> }
+                    <th>Ordem de serviço</th><th>Nome do plano</th><th>Prédio</th><th>Equipamento</th><th>Localização</th><th>Periodicidade</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model.Lista)
+                {
+                    <tr class="linha-clicavel" data-href="@Url.Page("Editar", new { id = p.Id })">
+                        @if (Model.PodeEditar) { <td class="sem-rotulo acoes-linha"><input type="checkbox" class="form-check-input sel-pl" name="ids" value="@p.Id" aria-label="Marcar @p.OrdemTrabalho" /></td> }
+                        <td data-rotulo="Ordem de serviço">@p.OrdemTrabalho</td>
+                        <td data-rotulo="Nome do plano">@p.Nome</td>
+                        <td data-rotulo="Prédio">@(p.Equipamento?.Predio is { Length: > 0 } predio ? predio : "-")</td>
+                        <td data-rotulo="Equipamento">@p.Equipamento?.Descricao</td>
+                        <td data-rotulo="Localização">@p.Equipamento?.Localizacao</td>
+                        <td data-rotulo="Periodicidade">@p.Periodicidade.Nome()</td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="7" class="text-muted text-center">Nenhum plano encontrado.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+<partial name="_Paginacao" model='new Paginacao(Model.Pagina, Model.Paginas, p => Url.Page("Index", Filtros(p)), Model.Total, "planos")' />
+@if (Model.PodeEditar)
+{
+    <partial name="_ModalImportar" model="@("Cada linha é um plano. Se já existir o mesmo equipamento + nome + periodicidade, o plano é atualizado; senão é criado com a SM e a OS automáticas. As atividades vêm da aba TASKS: um plano Semanal da ADESIVADORA usa o bloco ADESIVADORA - SEMANAL. Periodicidade por extenso ou sigla (S, Q, M, TM, SM, A); M/TM cria um plano Mensal e um Trimestral do mesmo equipamento.")" />
+}

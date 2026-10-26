@@ -1,0 +1,40 @@
+@model MS.Modelos.CartaoOs
+@*
+    ============================================================================
+    CARTÃO DE OS (celular e tablet) — usado na lista de Ordens de serviço e na lista do dia do Calendário.
+    Partes: etiqueta colorida (OS / Equip. / Linha) · equipamento · periodicidade e técnico · data + status · Ver e Imprimir.
+    Regra da cor: vermelha atrasada, amarela vence em até 7 dias, verde em dia (logo abaixo).
+    Cores e tamanhos: estilos.css seção 15 (.ticket, .cartao-os).
+    ============================================================================
+*@
+@{
+    var os = Model.Os;
+    var atrasada = os.Atrasada(Model.Agora);
+    // Cor da etiqueta: vermelha atrasada, amarela vence em até 7 dias, verde em dia.
+    var situacao = atrasada ? "atrasada" : (os.DataConclusao.Date - Model.Agora.Date).Days <= 7 ? "atencao" : "em-dia";
+}
+@* Cartão de OS no celular/tablet: etiqueta colorida, equipamento, periodicidade, data, status e botões Ver/Imprimir. *@
+<div class="cartao-os @(Model.Destaque ? "destaque" : "")" data-href="@Model.Href">
+    @if (Model.Selecao != null) { <input type="checkbox" class="form-check-input @Model.Selecao mb-2" name="ids" value="@os.Id" aria-label="Marcar @os.Numero" /> }
+    <div class="ticket @situacao">
+        <div><span>OS:</span><span>@os.Numero</span></div>
+        <div><span>Equip.:</span><span>@os.Equipamento?.Codigo</span></div>
+        <div><span>Linha:</span><span>@os.Equipamento?.Localizacao</span></div>
+    </div>
+    <div class="titulo">@os.Equipamento?.Descricao</div>
+    <div class="linha"><span>@os.Tipo.Nome()</span><span>@(os.Tecnico?.NomeCompleto)</span></div>
+    <div class="linha">
+        <span>Data da manutenção: <b>@os.DataConclusao.ToString("dd/MM/yyyy")</b></span>
+        <span class="pilula @(atrasada ? "st-atrasada" : "pendente")">@(atrasada ? "Atrasada" : "Aberta")</span>
+    </div>
+    <div class="botoes">
+        <a asp-page="/Ordens/Ver" asp-route-id="@os.Id">@Icones.Svg("ver", 18) Ver</a>
+        <a asp-page="/Ordens/Imprimir" asp-route-id="@os.Id" target="_blank">@Icones.Svg("imprimir", 18) Imprimir</a>
+        @* Conclusão retornada pelo coordenador: mostra quem retornou, quando e o motivo (interacoes.js seção 14). *@
+        @if (os.MotivoRetorno != null)
+        {
+            <button type="button" class="botao-retorno" data-retorno data-os="@os.Numero · @os.Equipamento?.Descricao"
+                    data-quem="@os.RetornadaPor" data-quando="@os.RetornadaEm.Data()" data-motivo="@os.MotivoRetorno">@Icones.Svg("retornar", 18) Motivo do retorno</button>
+        }
+    </div>
+</div>

@@ -1,0 +1,246 @@
+@page "{id:int?}"
+@model MS.Pages.Equipamentos.EditarModel
+@*
+    ============================================================================
+    TELA: EQUIPAMENTOS — cadastro (visual)  ·  lógica em Editar.cshtml.cs
+    Abas: 1. General — foto da máquina (opcional), código (automático), IRF (código da Samsung, opcional), etiqueta
+             eletrônica (opcional), nome, modelo, número de série (opcional), prédio (obrigatório), localização, status,
+             área.
+          2. Manual — o PDF do manual da máquina (Abrir · Trocar), aberto no visualizador do MS (Shared/_VisorManual).
+             O manual novo vai sozinho para todas as máquinas de mesmo nome (ex.: as NXT), sem perguntar.
+    Botões: Salvar · Salvar e adicionar outro · Remover · Histórico.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Equipamentos";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Equipamentos";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = Model.Equip.Id > 0 ? Model.Equip.Descricao : "Adicionar";
+    var ro = !Model.PodeEditar;
+    var eq = Model.Equip;
+}
+<form method="post" class="form-layout" enctype="multipart/form-data">
+    <input type="hidden" id="abaAtiva" name="abaAtiva" value="@Model.AbaAtiva" />
+    <div class="cartao">
+        <ul class="nav abas" role="tablist">
+            <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#aba-geral">General</button></li>
+            <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#aba-manual">Manual</button></li>
+        </ul>
+        <div asp-validation-summary="All" class="text-danger mt-3"></div>
+        <div class="tab-content">
+        <div class="tab-pane fade show active painel-form" id="aba-geral">
+        <fieldset disabled="@ro">
+            @* Foto da máquina (opcional): vai junto com o Salvar. No celular pergunta câmera ou galeria. Clicar na foto
+               abre ampliada na tela; a escolhida aparece no quadro antes de salvar; "Remover foto" tira a salva
+               (ao Salvar) ou a que acabou de ser escolhida (script no fim). *@
+            <div class="campo">
+                <label>Foto</label>
+                <div>
+                    <div class="foto-equip" id="fotoEquip">
+                        @if (Model.Equip.Foto != null)
+                        {
+                            <img src="@Url.Page("Editar", "Foto", new { id = Model.Equip.Id, v = Model.Equip.Foto })" alt="Foto da máquina" title="Clique para ampliar" />
+                        }
+                        else
+                        {
+                            <span class="foto-equip-vazia">@Icones.Svg("camera", 32)<span>Sem foto</span></span>
+                        }
+                    </div>
+                    @if (!ro)
+                    {
+                        <input type="hidden" name="RemoverFoto" id="RemoverFoto" value="false" />
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                            <label class="btn-ms b-azulclaro mb-0" style="cursor:pointer">
+                                @Icones.Svg("camera") <span id="textoEscolherFoto">@(Model.Equip.Foto != null ? "Trocar foto" : "Escolher foto")</span>
+                                <input type="file" name="FotoNova" id="FotoNova" accept="image/*" hidden />
+                            </label>
+                            <button type="button" class="btn-ms b-vermelho mb-0" id="btnRemoverFoto" hidden="@(Model.Equip.Foto == null)">@Icones.Svg("x", 14) Remover foto</button>
+                        </div>
+                        <div class="ajuda" id="ajudaFoto">Foto do maquinário. Clique na foto para ampliar. Vale ao clicar em Salvar.</div>
+                    }
+                </div>
+            </div>
+            @* Código do sistema: gerado no cadastro (prefixo do prédio + sigla do nome + número) e fixo depois. No cadastro a tela mostra a prévia. *@
+            <div class="campo">
+                <label asp-for="Equip.Codigo">Código</label>
+                @if (Model.Equip.Id == 0)
+                {
+                    <input class="form-control" asp-for="Equip.Codigo" readonly placeholder="Gerado ao digitar o nome e o prédio" data-codigo-de="#Equip_Nome" data-codigo-predio="#Equip_Predio" data-codigo-url="@Url.Page("Editar", "Codigo")" />
+                }
+                else
+                {
+                    <input class="form-control" asp-for="Equip.Codigo" readonly />
+                }
+            </div>
+            <div class="campo">
+                <label asp-for="Equip.Irf">IRF</label>
+                <input class="form-control" asp-for="Equip.Irf" maxlength="60" />
+            </div>
+            @* Etiqueta eletrônica: código de barras da tela da etiqueta colada na máquina (dá para ler com o leitor). *@
+            <div class="campo">
+                <label asp-for="Equip.Etiqueta">Etiqueta eletrônica</label>
+                <input class="form-control" asp-for="Equip.Etiqueta" maxlength="60" />
+            </div>
+            <div class="campo"><label class="obrig" asp-for="Equip.Nome">Nome</label><input class="form-control" asp-for="Equip.Nome" required maxlength="120" /></div>
+            <div class="campo"><label asp-for="Equip.Modelo">Modelo</label><input class="form-control" asp-for="Equip.Modelo" maxlength="80" /></div>
+            <div class="campo"><label asp-for="Equip.NumeroSerie">Número de série</label><input class="form-control" asp-for="Equip.NumeroSerie" maxlength="80" /></div>
+            <div class="campo">
+                <label class="obrig" asp-for="Equip.Predio">Prédio</label>
+                <div>
+                    <input class="form-control" asp-for="Equip.Predio" list="predios" required maxlength="80" />
+                    <datalist id="predios">@foreach (var p in Model.Predios) { <option value="@p"></option> }</datalist>
+                    <div class="ajuda">Prédio onde o equipamento fica.</div>
+                </div>
+            </div>
+            <div class="campo">
+                <label class="obrig" asp-for="Equip.Localizacao">Localização</label>
+                <div>
+                    <input class="form-control" asp-for="Equip.Localizacao" list="locais" required maxlength="80" />
+                    <datalist id="locais">@foreach (var l in Model.Localizacoes) { <option value="@l"></option> }</datalist>
+                    <div class="ajuda">Linha de produção onde o equipamento fica.</div>
+                </div>
+            </div>
+            <div class="campo">
+                <label asp-for="Equip.Status">Status</label>
+                <select class="form-select" asp-for="Equip.Status">
+                    @foreach (var s in Textos.StatusEquipamentoOpcoes) { <option value="@s">@s.Nome()</option> }
+                </select>
+            </div>
+            <div class="campo mb-0">
+                <label asp-for="Equip.CelulaId">Área</label>
+                <select class="form-select" asp-for="Equip.CelulaId" asp-items="@(new SelectList(Model.Celulas, "Id", "Nome"))"><option value="">—</option></select>
+            </div>
+        </fieldset>
+        </div>
+
+        @* Manual da máquina em PDF: vai junto com o Salvar e troca o anterior. Abre no visualizador do MS, que a OS
+           usa para abrir na página de cada tarefa (a página é escolhida no Cronograma). *@
+        <div class="tab-pane fade painel-form" id="aba-manual">
+            @if (eq.Manual != null)
+            {
+                <div class="manual-arquivo">
+                    <div class="manual-pdf">PDF</div>
+                    <div class="manual-info">
+                        <div class="manual-nome">@eq.ManualNome</div>
+                        <div class="manual-detalhe">@ManuaisMaquina.TamanhoTexto(Model.TamanhoManual)@(eq.ManualEm is DateTime em ? $" · anexado{(eq.ManualPor != null ? $" por {eq.ManualPor}" : "")} em {em:dd/MM/yyyy}" : "")</div>
+                    </div>
+                    <div class="manual-botoes">
+                        <button type="button" class="btn-ms b-azulclaro abrir-manual" data-manual-url="@Url.Page("Editar", "Manual", new { id = eq.Id, v = eq.Manual })"
+                                data-manual-nome="@eq.ManualNome" data-manual-voltar="Fechar">Abrir</button>
+                        @if (!ro)
+                        {
+                            <label class="btn-ms b-cinza mb-0" style="cursor:pointer">Trocar<input type="file" name="ManualNovo" id="ManualNovo" accept=".pdf,application/pdf" hidden /></label>
+                        }
+                    </div>
+                </div>
+            }
+            else if (!ro)
+            {
+                <label class="manual-soltar" id="manualSoltar">
+                    @Icones.Svg("livro", 28)
+                    <span>Arraste o PDF aqui ou <b>escolha o arquivo</b></span>
+                    <input type="file" name="ManualNovo" id="ManualNovo" accept=".pdf,application/pdf" hidden />
+                </label>
+            }
+            else
+            {
+                <p class="text-muted text-center mb-0">Esta máquina não tem manual.</p>
+            }
+            @if (!ro)
+            {
+                <div class="ajuda mt-2" id="ajudaManual">Manual da máquina em PDF (até @(ManuaisMaquina.TamanhoMaximo / 1024 / 1024) MB). Vale ao clicar em Salvar e vai para todas as máquinas com o mesmo nome. Na OS, abre na página de cada tarefa (escolhida no Cronograma).</div>
+            }
+        </div>
+        </div>
+    </div>
+    <div class="lado">
+        @if (!ro)
+        {
+            <button class="btn-ms b-verde" name="acao" value="salvar">Salvar</button>
+            <button class="btn-ms b-azul" name="acao" value="outro">Salvar e adicionar outro(a)</button>
+            @if (Model.Equip.Id > 0)
+            {
+                <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-confirmar="Remover este equipamento?" formnovalidate>Remover</button>
+            }
+        }
+        @if (Model.Equip.Id > 0)
+        {
+            <div class="sep"></div>
+            <a class="btn-ms b-contorno-azul" asp-page="/Historico/Index" asp-route-entidade="Equipamento" asp-route-id="@Model.Equip.Id">Histórico</a>
+        }
+    </div>
+</form>
+
+@* Foto da máquina ampliada (clicar na foto do quadro). *@
+<div class="foto-zoom" id="fotoZoom" hidden title="Clique para fechar"><img alt="Foto da máquina" /></div>
+<template id="tplSemFoto"><span class="foto-equip-vazia">@Icones.Svg("camera", 32)<span>Sem foto</span></span></template>
+<partial name="_VisorManual" />
+
+@section Scripts {
+    <script src="~/js/manual.js" asp-append-version="true"></script>
+    <script>
+        // ===== Manual: mostra o PDF escolhido (vale ao Salvar) · arrastar o arquivo para o quadro. =====
+        (function () {
+            const arquivo = document.getElementById('ManualNovo'), ajuda = document.getElementById('ajudaManual');
+            if (!arquivo) return; // só leitura
+            arquivo.addEventListener('change', () => {
+                const arq = arquivo.files[0];
+                if (arq) ajuda.innerHTML = `<b>Manual escolhido: ${arq.name.replace(/[<>&]/g, '')}.</b> Vale ao clicar em Salvar.`;
+            });
+            const quadro = document.getElementById('manualSoltar');
+            if (!quadro) return;
+            quadro.addEventListener('dragover', e => { e.preventDefault(); quadro.classList.add('arrastando'); });
+            quadro.addEventListener('dragleave', () => quadro.classList.remove('arrastando'));
+            quadro.addEventListener('drop', e => {
+                e.preventDefault();
+                quadro.classList.remove('arrastando');
+                if (!e.dataTransfer.files.length) return;
+                arquivo.files = e.dataTransfer.files;
+                arquivo.dispatchEvent(new Event('change'));
+            });
+        })();
+    </script>
+    <script>
+        // ===== Foto da máquina: ampliar ao clicar · prévia da escolhida antes de salvar · "Remover foto". =====
+        (function () {
+            const quadro = document.getElementById('fotoEquip'), zoom = document.getElementById('fotoZoom');
+            const arquivo = document.getElementById('FotoNova'), remover = document.getElementById('RemoverFoto');
+            const btnRemover = document.getElementById('btnRemoverFoto'), ajuda = document.getElementById('ajudaFoto');
+            const temSalva = !!quadro.querySelector('img');
+
+            // Ampliar: a foto ocupa a tela; fecha clicando em qualquer lugar ou com Esc.
+            quadro.addEventListener('click', () => {
+                const img = quadro.querySelector('img');
+                if (!img) return;
+                zoom.querySelector('img').src = img.src;
+                zoom.hidden = false;
+            });
+            zoom.addEventListener('click', () => zoom.hidden = true);
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') zoom.hidden = true; });
+
+            if (!arquivo) return; // só leitura
+            arquivo.addEventListener('change', () => {
+                const arq = arquivo.files[0];
+                if (!arq) return;
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(arq);
+                img.alt = 'Foto da máquina';
+                img.title = 'Clique para ampliar';
+                quadro.replaceChildren(img);
+                remover.value = 'false';
+                btnRemover.hidden = false;
+                ajuda.textContent = 'Foto escolhida. Vale ao clicar em Salvar.';
+            });
+            // Remover: tira a escolhida agora e, se já havia foto salva, ela sai ao Salvar.
+            btnRemover.addEventListener('click', () => {
+                arquivo.value = '';
+                quadro.replaceChildren(document.getElementById('tplSemFoto').content.cloneNode(true));
+                remover.value = temSalva ? 'true' : 'false';
+                btnRemover.hidden = true;
+                document.getElementById('textoEscolherFoto').textContent = 'Escolher foto';
+                ajuda.textContent = temSalva ? 'A foto será removida ao clicar em Salvar.' : 'Foto do maquinário. Vale ao clicar em Salvar.';
+            });
+        })();
+    </script>
+}

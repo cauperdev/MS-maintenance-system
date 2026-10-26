@@ -1,0 +1,59 @@
+@page "{id:int}"
+@model MS.Pages.Finalizacao.EditarModel
+@*
+    ============================================================================
+    TELA: FINALIZAÇÃO — revisão (aprovar / retornar uma conclusão)  ·  lógica em Ver.cshtml.cs (EditarModel)
+    A ficha em si está em _FinDetalhe.cshtml.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Finalização";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Finalização";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = $"{Model.Fin.NumeroOS} - {Model.Fin.Equipamento?.Codigo}";
+}
+<form method="post" class="form-layout">
+    <div class="cartao">
+        <partial name="_FinDetalhe" model="Model.Fin" />
+        <div class="campo mt-3">
+            <label class="obrig" for="StatusRevisao">Status da revisão</label>
+            <div>
+                <select class="form-select" name="StatusRevisao" id="StatusRevisao">
+                    @foreach (var s in Enum.GetValues<StatusRevisao>())
+                    {
+                        <option value="@s" selected="@(s == Model.Fin.StatusRevisao)">@s.Nome()</option>
+                    }
+                </select>
+                <div class="ajuda">Aprovado: fica visível para Visitante e Auditor. Retornado: sai da Finalização e a OS volta para Ordens de serviço, com a data daquele ciclo, para refazer.</div>
+            </div>
+        </div>
+        @* Só com "Retornado" escolhido: o motivo é obrigatório e aparece na lista de Ordens de serviço, coluna Retorno. *@
+        <div class="campo" id="campoMotivo" hidden>
+            <label class="obrig" for="Motivo">Motivo do retorno</label>
+            <div>
+                <textarea class="form-control" name="Motivo" id="Motivo" rows="3" maxlength="1000" placeholder="O que precisa ser refeito"></textarea>
+                <div class="ajuda">Aparece na lista de Ordens de serviço, na coluna Retorno.</div>
+            </div>
+        </div>
+    </div>
+    <div class="lado">
+        <button class="btn-ms b-verde" name="acao" value="salvar">Salvar</button>
+        <div class="sep"></div>
+        <a class="btn-ms b-contorno-azul" asp-page="/Historico/Index" asp-route-entidade="Finalizacao" asp-route-id="@Model.Fin.Id">Histórico</a>
+        <a class="btn-ms b-contorno-azul" asp-page="Imprimir" asp-route-id="@Model.Fin.Id" target="_blank">@Icones.Svg("imprimir", 16) Imprimir</a>
+        <a class="btn-ms b-contorno-azul" asp-page="Imprimir" asp-route-id="@Model.Fin.Id" asp-route-fotos="1" target="_blank">@Icones.Svg("imprimir", 16) Imprimir com fotos</a>
+    </div>
+</form>
+
+@section Scripts {
+<script>
+    // Motivo do retorno: aparece (e passa a ser obrigatório) só com "Retornado" escolhido.
+    (function () {
+        const status = document.getElementById('StatusRevisao'), campo = document.getElementById('campoMotivo'), motivo = document.getElementById('Motivo');
+        const atualizar = () => { const ret = status.value === 'Retornado'; campo.hidden = !ret; motivo.required = ret; };
+        status.addEventListener('change', atualizar);
+        atualizar();
+    })();
+</script>
+}

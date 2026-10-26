@@ -1,0 +1,49 @@
+@model Colunas
+@*
+    ============================================================================
+    GRÁFICO DE COLUNAS do Dashboard (maiores primeiro). Dados: Modelos/Graficos.cs → Colunas. Cores e tamanhos: estilos.css seção 13.
+    ============================================================================
+*@
+@{
+    var max = Math.Max(1, Model.Itens.SelectMany(i => i.Valores).DefaultIfEmpty(0).Max());
+    var temAtiva = Model.Itens.Any(i => i.Ativa);
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    // Percentual de cada valor sobre o total da sua série.
+    string Pct(int serie, int v)
+    {
+        var total = Model.Itens.Sum(i => i.Valores[serie]);
+        return total == 0 ? "0%" : (v * 100.0 / total).ToString("0.#") + "%";
+    }
+}
+<div class="cartao grafico colunas">
+    <h3>@Model.Titulo</h3>
+    @if (Model.Series.Count > 1)
+    {
+        <div class="colunas-legenda">
+            @foreach (var s in Model.Series) { <span><span class="ponto-redondo" style="background:@s.Cor"></span>@s.Nome</span> }
+        </div>
+    }
+    <div class="colunas-area">
+        @* Pareto: maiores primeiro (OrderByDescending é estável, empates mantêm a ordem original). *@
+        @foreach (var item in Model.Itens.OrderByDescending(i => i.Valores.Sum()))
+        {
+            // Dica igual à da rosca: "Rótulo: valor (percentual)".
+            var titulo = string.Join(" · ", Model.Series.Select((s, i) =>
+                (Model.Series.Count > 1 ? $"{s.Nome} " : "") + $"{item.Valores[i]} ({Pct(i, item.Valores[i])})"));
+            <a class="coluna-grupo @(item.Ativa ? "ativa" : "") @(temAtiva && !item.Ativa ? "apagada" : "")"
+               href="@(item.Url ?? "#")" title="@item.Rotulo: @titulo">
+                <span class="coluna-barras">
+                    @for (var i = 0; i < Model.Series.Count; i++)
+                    {
+                        var v = item.Valores[i];
+                        <span class="coluna" style="height:@((v * 100.0 / max).ToString("0.#", inv))%;background:@Model.Series[i].Cor;--brilho:@Model.Series[i].Cor">
+                            <span class="coluna-valor">@v</span>
+                        </span>
+                    }
+                </span>
+                <span class="coluna-rotulo">@item.Rotulo</span>
+            </a>
+        }
+        @if (!Model.Itens.Any()) { <p class="text-muted text-center m-auto">Sem dados com esse filtro.</p> }
+    </div>
+</div>

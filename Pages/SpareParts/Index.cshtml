@@ -1,0 +1,141 @@
+@page
+@model MS.Pages.SpareParts.IndexModel
+@*
+    ============================================================================
+    TELA: SPARE PARTS (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. quadro do alto — "Nova peça" ou "Alterando a peça X" (código, descrição, equipamento + Salvar/Cancelar;
+            Equipamento = tipo de máquina, só o nome: clicar abre a lista, digitar pesquisa e dá para escrever outro —
+            data-pesquisa, interacoes.js seção 12, texto livre)
+            · 2. pesquisa · 3. Remover selecionados, Baixar modelo, Importar Excel (janela _ModalImportar) e Extração
+            · 4. tabela: código, descrição, equipamento (sem quantidade desde 08/10/2026: só histórico do código)
+            e, com o SAP ligado, "Saldo SAP" (preenchida depois que a tela abre, só com os códigos desta página — script no fim)
+            (clicar na linha abre a peça no quadro do alto) · 5. páginas de 50 (Shared/_Paginacao.cshtml; a página
+            aberta continua ao alterar uma peça). Cores e tamanhos: estilos.css "Spare Parts".
+    Só as peças da área escolhida nos cartões (cada área tem as suas — lógica em Index.cshtml.cs).
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Spare Parts";
+    ViewData["Trilha"] = "Manutenção";
+    var e = Model.Editando;
+    object Filtros(int pagina) => new { Model.Q, Pagina = pagina };
+    var variasPaginas = Model.Paginas > 1;   // "marcar todas" vale para todas as páginas
+}
+<p class="subtitulo-pagina">Histórico dos códigos das peças: código, descrição e equipamento. As peças com código lançadas nas OS ficam registradas aqui ao concluir.</p>
+
+@if (Model.PodeEditar)
+{
+    <form method="post" asp-page-handler="Salvar" asp-route-id="@e?.Id" asp-route-q="@Model.Q" asp-route-pagina="@Model.Pagina" class="cartao peca-quadro @(e != null ? "editando" : "")">
+        <div class="peca-quadro-titulo">
+            @if (e != null) { <span>Alterando a peça</span> <b>@e.Codigo</b> }
+            else { <span>Nova peça</span> }
+        </div>
+        <div class="peca-campos">
+            <div class="peca-codigo">
+                <label for="codigo">Código</label>
+                <input class="form-control" id="codigo" name="codigo" value="@e?.Codigo" required maxlength="60" autocomplete="off" />
+            </div>
+            <div class="peca-descricao">
+                <label for="descricao">Descrição</label>
+                <input class="form-control" id="descricao" name="descricao" value="@e?.Descricao" required maxlength="200" autocomplete="off" />
+            </div>
+            <div class="peca-equip">
+                <label for="maquina">Equipamento</label>
+                <input class="form-control" id="maquina" name="maquina" value="@e?.Maquina" list="tiposMaquina" data-pesquisa maxlength="120" autocomplete="off" placeholder="Ex.: ADESIVADORA" />
+                <datalist id="tiposMaquina">@foreach (var t in Model.TiposDeMaquina) { <option value="@t"></option> }</datalist>
+            </div>
+            <div class="peca-botoes">
+                <button class="btn-ms b-verde" type="submit">@Icones.Svg(e != null ? "ok" : "mais", 16) @(e != null ? "Salvar" : "Adicionar")</button>
+                @if (e != null) { <a class="btn-ms b-cinza" asp-page="Index" asp-route-q="@Model.Q" asp-route-pagina="@Model.Pagina">Cancelar</a> }
+            </div>
+        </div>
+    </form>
+}
+
+<form method="get" class="filtros">
+    <input class="form-control" asp-for="Q" placeholder="Código, descrição ou equipamento" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+
+<form method="post">
+    @* Com "marcar todas" marcado (lista com várias páginas), Remover vale para todas as peças da pesquisa. *@
+    <input type="hidden" name="todos" id="removerTodos" value="false" />
+    <div class="barra-acoes barra-grade">
+        @if (Model.PodeEditar)
+        {
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" asp-route-q="@Model.Q" asp-route-pagina="@Model.Pagina" data-exige-selecao=".sel-peca" data-confirmar="Remover {n} peça(s) marcada(s)? As que têm histórico ficam inativas." data-confirmar-todos="Remover TODAS as {n} peças da lista (todas as páginas)? As que têm histórico ficam inativas.">@Icones.Svg("lixo") Remover selecionados</button>
+            <button type="button" class="btn-ms b-azul d-none d-lg-inline-flex" data-bs-toggle="modal" data-bs-target="#modalImportar">@Icones.Svg("enviar") Importar Excel</button>
+        }
+        @* Cor por função: os que só baixam arquivo ficam brancos com borda azul, no fim. *@
+        <a class="btn-ms b-contorno-azul d-none d-lg-inline-flex" asp-page-handler="Modelo">@Icones.Svg("arquivo") Baixar modelo</a>
+        <a class="btn-ms b-contorno-azul" href="@Url.Page("Index", "Extracao", new { Model.Q })">@Icones.Svg("baixar") Extração</a>
+    </div>
+
+    @* Celular: a tabela vira cartões e o cabeçalho (com o "marcar todas") some; esta caixinha fica no lugar dele. *@
+    @if (Model.PodeEditar && Model.Lista.Any())
+    {
+        <label class="marcar-cartoes d-md-none">
+            <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-peca" data-total="@(variasPaginas ? (int?)Model.Total : null)" data-todos="@(variasPaginas ? "#removerTodos" : null)" />
+            <span>Marcar todas</span><span class="text-muted">(@Model.Total)</span>
+        </label>
+    }
+    <div class="cartao">
+        <table class="tabela tabela-cards tabela-pecas">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th class="col-sel"><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-peca" data-total="@(variasPaginas ? (int?)Model.Total : null)" data-todos="@(variasPaginas ? "#removerTodos" : null)" aria-label="Marcar todas" /></th> }
+                    <th class="esq">Código</th>
+                    <th class="esq">Descrição</th>
+                    <th class="esq">Equipamento</th>
+                    @if (Model.SapLigado) { <th class="dir">Saldo SAP</th> }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model.Lista)
+                {
+                    // Clicar na linha abre a peça no quadro do alto (só quem pode editar).
+                    var href = Model.PodeEditar ? Url.Page("Index", new { editar = p.Id, Model.Q, Model.Pagina }) : null;
+                    <tr class="@(href != null ? "linha-clicavel" : "") @(e?.Id == p.Id ? "destaque" : "")" data-href="@href">
+                        @if (Model.PodeEditar) { <td class="col-sel sem-rotulo"><input type="checkbox" class="form-check-input sel-peca" name="ids" value="@p.Id" aria-label="Marcar @p.Codigo" /></td> }
+                        <td class="esq" data-rotulo="Código"><b class="nome-azul">@p.Codigo</b></td>
+                        <td class="esq" data-rotulo="Descrição">@p.Descricao</td>
+                        <td class="esq" data-rotulo="Equipamento">@(p.Maquina ?? "-")</td>
+                        @if (Model.SapLigado) { <td class="dir saldo-sap" data-rotulo="Saldo SAP" data-saldo-sap="@p.Id">…</td> }
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="5" class="text-muted text-center">Nenhuma peça encontrada.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+<partial name="_Paginacao" model='new Paginacao(Model.Pagina, Model.Paginas, p => Url.Page("Index", Filtros(p)), Model.Total, Model.Total == 1 ? "peça" : "peças")' />
+@if (Model.PodeEditar)
+{
+    <partial name="_ModalImportar" model="@("Código novo vira peça nova; código que já existe é atualizado. Equipamento é opcional.")" />
+}
+
+@section Scripts {
+    @if (Model.SapLigado && Model.Lista.Any())
+    {
+        <script>
+            // Saldo SAP: pede ao MS o saldo das peças desta página (só estes códigos vão para o SAP) e preenche a coluna.
+            (async () => {
+                const celulas = [...document.querySelectorAll('[data-saldo-sap]')];
+                const t = s => window.msT ? msT(s) : s;
+                const marcar = (td, texto, classe) => { td.textContent = texto; if (classe) td.classList.add(classe); };
+                try {
+                    const ids = celulas.map(td => 'ids=' + td.dataset.saldoSap).join('&');
+                    const r = await fetch(location.pathname + '?handler=SaldoSap&' + ids, { credentials: 'same-origin' });
+                    const res = await r.json();
+                    celulas.forEach(td => {
+                        const s = res.saldos && res.saldos[td.dataset.saldoSap];
+                        if (res.erro || !s) marcar(td, t(res.erro || 'SAP indisponível'), 'sem-sap');
+                        else marcar(td, s.texto, s.zero ? 'zerado' : null);
+                    });
+                } catch {
+                    celulas.forEach(td => marcar(td, t('SAP indisponível'), 'sem-sap'));
+                }
+            })();
+        </script>
+    }
+}

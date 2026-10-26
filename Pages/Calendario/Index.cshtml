@@ -1,0 +1,114 @@
+@page
+@model MS.Pages.Calendario.IndexModel
+@*
+    ============================================================================
+    TELA: CALENDÁRIO (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. mês + setas + filtros de localização e célula · 2. legenda de cores · 3. grade do mês
+            · 4. lista das OS do dia clicado (cartões no celular, tabela no computador)
+    Cores e tamanhos: estilos.css seção 10 (computador) e 15 (celular: grade compacta).
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Calendário";
+    ViewData["Trilha"] = "Manutenção";
+    var ini = Model.Inicio;
+    string MesUrl(DateTime d) => Url.Page("Index", new { Mes = d.ToString("yyyy-MM"), Model.Local, Model.CelulaId })!;
+    // Clicar num dia (ou numa OS dele) mostra as OS pendentes daquele dia em lista abaixo do calendário.
+    string DiaUrl(DateTime d, int? os = null) => Url.Page("Index", new { Mes = ini.ToString("yyyy-MM"), Model.Local, Model.CelulaId, Dia = d.ToString("yyyy-MM-dd"), Os = os }) + "#lista-dia";
+    string[] semana = { "DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB" };
+}
+<div id="area-calendario" data-sem-recarregar>
+<div class="cal-topo">
+    <a class="cal-nav" href="@MesUrl(ini.AddMonths(-1))" title="Mês anterior" aria-label="Mês anterior">@Icones.Svg("esquerda", 20)</a>
+    <span class="mes">@Textos.Meses[ini.Month - 1] de @ini.Year</span>
+    <a class="cal-nav" href="@MesUrl(ini.AddMonths(1))" title="Próximo mês" aria-label="Próximo mês">@Icones.Svg("direita", 20)</a>
+    <span class="text-muted">@Model.TotalMes OS programadas no mês</span>
+    <form method="get" class="ms-auto d-flex flex-wrap align-items-center gap-3">
+        <input type="hidden" name="Mes" value="@ini.ToString("yyyy-MM")" />
+        <div class="d-flex align-items-center gap-2">
+            <label class="fw-bold text-secondary" for="Local">Localização:</label>
+            <select class="form-select" asp-for="Local" onchange="this.form.requestSubmit()">
+                <option value="">Todas as localizações</option>
+                @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+            </select>
+        </div>
+    </form>
+</div>
+<div class="legenda d-none d-md-flex">
+    <span><span class="ponto" style="background:var(--destaque)"></span>Aberta</span>
+    <span><span class="ponto" style="background:var(--atrasada)"></span>Atrasada</span>
+</div>
+@* No celular a grade mostra só a quantidade por dia; as cores valem para os cartões da lista do dia. *@
+<div class="legenda legenda-cores d-md-none">
+    <span><span class="quadro em-dia"></span>Em dia</span>
+    <span><span class="quadro atencao"></span>Atenção</span>
+    <span><span class="quadro atrasada"></span>Atrasada</span>
+</div>
+
+<div class="calendario-wrap table-responsive">
+    <table class="calendario">
+        <thead><tr>@foreach (var s in semana) { <th>@s</th> }</tr></thead>
+        <tbody>
+            @for (var sem = 0; sem < 6; sem++)
+            {
+                var primeiro = Model.InicioGrade.AddDays(sem * 7);
+                if (sem == 5 && primeiro.Month != ini.Month) break;
+                <tr>
+                    @for (var d = 0; d < 7; d++)
+                    {
+                        var dia = primeiro.AddDays(d);
+                        var lista = Model.PorDia.GetValueOrDefault(dia) ?? new();
+                        <td class="@(dia.Month != ini.Month ? "fora" : "") @(dia == Model.Dia?.Date ? "dia-sel" : "")">
+                            <div class="dia-topo">
+                                <a href="@DiaUrl(dia)" class="@(dia == Model.Agora.Date ? "hoje" : "")">@dia.Day</a>
+                                @if (lista.Count > 0) { <span class="qtd">@lista.Count</span> }
+                            </div>
+                            @foreach (var o in lista.Take(3))
+                            {
+                                <a class="etq @Model.Cor(o) @(o.Id == Model.Os ? "sel" : "")" href="@DiaUrl(dia, o.Id)" title="@o.Numero · @o.Equipamento?.Descricao · @o.Tipo.Nome()">@o.Equipamento?.Codigo</a>
+                            }
+                            @if (lista.Count > 3) { <a class="mais" href="@DiaUrl(dia)">+@(lista.Count - 3) mais</a> }
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (Model.Dia is DateTime diaSel)
+{
+    <div class="cartao mt-4" id="lista-dia">
+        <h2 class="h5 mb-3">OS pendentes do dia @diaSel.ToString("dd/MM/yyyy") <span class="text-muted fw-normal">(@Model.DoDia.Count)</span></h2>
+        <div class="cartoes d-md-none">
+            @foreach (var o in Model.DoDia)
+            {
+                <partial name="_CartaoOs" model="@(new CartaoOs(o, (Model.Pode("ordens") ? Url.Page("/Ordens/Editar", new { id = o.Id }) : Url.Page("/Ordens/Ver", new { id = o.Id }))!, Model.Agora, o.Id == Model.Os))" />
+            }
+            @if (!Model.DoDia.Any()) { <p class="text-muted text-center">Nenhuma OS pendente neste dia.</p> }
+        </div>
+        <table class="tabela tabela-cards d-none d-md-table">
+            <thead><tr><th>Número da OS</th><th>Código</th><th>Equipamento</th><th>Localização</th><th>Tipo</th><th>Técnico</th><th>Data da manutenção</th></tr></thead>
+            <tbody>
+                @foreach (var o in Model.DoDia)
+                {
+                    <tr class="linha-clicavel @(o.Id == Model.Os ? "destaque" : "")" data-href="@(Model.Pode("ordens") ? Url.Page("/Ordens/Editar", new { id = o.Id }) : Url.Page("/Ordens/Ver", new { id = o.Id }))">
+                        <td data-rotulo="Número da OS">@o.Numero</td>
+                        <td data-rotulo="Código">@o.Equipamento?.Codigo</td>
+                        <td data-rotulo="Equipamento">@o.Equipamento?.Descricao</td>
+                        <td data-rotulo="Localização">@o.Equipamento?.Localizacao</td>
+                        <td data-rotulo="Tipo">@o.Tipo.Nome()</td>
+                        <td data-rotulo="Técnico">@(o.Tecnico?.NomeCompleto ?? "-")</td>
+                        <td data-rotulo="Data da manutenção" class="text-nowrap">@o.DataConclusao.ToString("dd/MM/yyyy")</td>
+                    </tr>
+                }
+                @if (!Model.DoDia.Any()) { <tr><td colspan="7" class="text-muted text-center">Nenhuma OS pendente neste dia.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="cartao mt-4 text-muted fst-italic">Clique num dia do calendário para ver todas as OS programadas nele.</div>
+}
+</div>

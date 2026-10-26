@@ -1,0 +1,150 @@
+﻿@page
+@model MS.Pages.Ordens.IndexModel
+@*
+    ============================================================================
+    TELA: ORDENS DE SERVIÇO — lista (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros (ano, mês, status, localização, célula, periodicidade, pesquisa) · 2. botões · 3. cartões com etiqueta colorida
+            (celular/tablet — desenho em Shared/_CartaoOs.cshtml) · 4. tabela (computador; coluna Retorno: clicar em
+            "Retornada" mostra o motivo do retorno) · 5. páginas (‹ 1 / N ›)
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Ordens de serviço";
+    ViewData["Trilha"] = "Manutenção";
+    var gestao = Model.Pode("ordens_gestao");     // Editar: remover
+    var verGestao = Model.Ve("ordens_gestao");    // Ver: extração
+    object Filtros(int pagina) => new { Model.Ano, Model.Mes, Model.Situacao, Model.Local, Model.CelulaId, Model.Periodicidade, Model.Q, Lembretes = Model.Lembretes ? true : (bool?)null, Pagina = pagina }; // Lembretes só entra no endereço quando ligado
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Ano">
+        <option value="">Ano de abertura</option>
+        @foreach (var a in Model.Anos) { <option value="@a">@a</option> }
+    </select>
+    <select class="form-select" asp-for="Mes">
+        <option value="">Mês de abertura</option>
+        @for (var m = 1; m <= 12; m++) { <option value="@m">@Textos.Meses[m - 1]</option> }
+    </select>
+    <select class="form-select" asp-for="Situacao">
+        <option value="">Status</option>
+        <option value="aberta">Aberta</option>
+        <option value="atrasada">Atrasada</option>
+    </select>
+    <select class="form-select" asp-for="Local">
+        <option value="">Localização</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <select class="form-select" asp-for="Periodicidade">
+        <option value="">Periodicidade</option>
+        @foreach (var p in Enum.GetValues<Periodicidade>()) { <option value="@p">@p.Nome()</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="Número, código ou nome" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+    @if (Model.Lembretes)
+    {
+        <input type="hidden" name="Lembretes" value="true" />
+        <span class="badge text-bg-danger align-self-center p-2">@Icones.Svg("sino", 14) Só lembretes</span>
+        <a class="btn btn-sm btn-outline-secondary align-self-center" asp-page="Index">Mostrar todas</a>
+    }
+</form>
+
+<form method="post" id="formLista">
+    @* Filtros da tela: com "marcar todas" marcado, Remover apaga todas as OS da lista filtrada (todas as páginas). *@
+    <input type="hidden" name="todos" id="removerTodos" value="false" />
+    <input type="hidden" name="Ano" value="@Model.Ano" />
+    <input type="hidden" name="Mes" value="@Model.Mes" />
+    <input type="hidden" name="Situacao" value="@Model.Situacao" />
+    <input type="hidden" name="Local" value="@Model.Local" />
+    <input type="hidden" name="CelulaId" value="@Model.CelulaId" />
+    <input type="hidden" name="Periodicidade" value="@Model.Periodicidade" />
+    <input type="hidden" name="Q" value="@Model.Q" />
+    <input type="hidden" name="Lembretes" value="@Model.Lembretes.ToString()" />
+    <div class="barra-acoes barra-grade">
+        @if (Model.PodeEditar)
+        {
+            <a class="btn-ms b-verde" asp-page="Editar">@Icones.Svg("mais") Adicionar Ordem de serviço</a>
+        }
+        @if (gestao)
+        {
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-exige-selecao=".sel-os" data-confirmar="Remover {n} ordem(ns) de serviço marcada(s)? As finalizações delas também serão apagadas." data-confirmar-todos="Remover TODAS as {n} ordens de serviço da lista (todas as páginas)? As finalizações delas também serão apagadas.">@Icones.Svg("lixo") Remover selecionados</button>
+        }
+        @if (verGestao)
+        {
+            <a class="btn-ms b-contorno-azul" href="@Url.Page("Index", "Extracao", new { Model.Ano, Model.Mes, Model.Situacao, Model.Local, Model.CelulaId, Model.Periodicidade, Model.Q })">@Icones.Svg("baixar") Extração</a>
+        }
+    </div>
+
+    @* Celular e tablet: cartões com etiqueta colorida (slides "Regras MS · Celular"); computador: tabela. *@
+    <div class="legenda legenda-cores d-lg-none">
+        <span><span class="quadro em-dia"></span>Em dia</span>
+        <span><span class="quadro atencao"></span>Atenção</span>
+        <span><span class="quadro atrasada"></span>Atrasada</span>
+    </div>
+    @if (gestao && Model.Lista.Any())
+    {
+        <label class="marcar-cartoes d-lg-none">
+            <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-os" data-total="@Model.Total" data-todos="#removerTodos" />
+            <span>Marcar todas</span><span class="text-muted">(@Model.Total)</span>
+        </label>
+    }
+    <div class="cartoes d-lg-none">
+        @foreach (var o in Model.Lista)
+        {
+            <partial name="_CartaoOs" model="@(new CartaoOs(o, (Model.PodeEditar ? Url.Page("Editar", new { id = o.Id }) : Url.Page("Ver", new { id = o.Id }))!, Model.Agora, Selecao: gestao ? "sel-os" : null))" />
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted text-center">Nenhuma ordem de serviço encontrada.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    <th>@if (gestao) { <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-os" data-total="@Model.Total" data-todos="#removerTodos" aria-label="Marcar todas" /> }</th>
+                    <th>Visualização</th><th>Imprimir</th><th>Ordem de serviço</th><th>Prédio</th><th>Equipamento</th><th>Localização</th>
+                    <th>Periodicidade</th><th>Status</th><th>Técnico</th><th>Coordenador</th>
+                    <th>Data da manutenção</th><th>Próxima manutenção</th><th>Retorno</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var o in Model.Lista)
+                {
+                    var atrasada = o.Atrasada(Model.Agora);
+                    <tr class="linha-clicavel" data-href="@(Model.PodeEditar ? Url.Page("Editar", new { id = o.Id }) : Url.Page("Ver", new { id = o.Id }))">
+                        <td class="acoes-linha sem-rotulo">
+                            @if (gestao) { <input type="checkbox" class="form-check-input sel-os" name="ids" value="@o.Id" aria-label="Marcar @o.Numero" /> }
+                            <a class="acao-ic d-md-none" asp-page="Ver" asp-route-id="@o.Id" title="Visualização">@Icones.Svg("ver", 22)</a>
+                            <a class="acao-ic d-md-none" asp-page="Imprimir" asp-route-id="@o.Id" target="_blank" title="Imprimir">@Icones.Svg("imprimir", 22)</a>
+                        </td>
+                        <td class="d-none d-md-table-cell"><a class="acao-ic" asp-page="Ver" asp-route-id="@o.Id" title="Visualização">@Icones.Svg("ver", 22)</a></td>
+                        <td class="d-none d-md-table-cell"><a class="acao-ic" asp-page="Imprimir" asp-route-id="@o.Id" target="_blank" title="Imprimir">@Icones.Svg("imprimir", 22)</a></td>
+                        <td data-rotulo="Ordem de serviço">@o.Numero</td>
+                        <td data-rotulo="Prédio">@(o.Equipamento?.Predio is { Length: > 0 } predio ? predio : "-")</td>
+                        <td data-rotulo="Equipamento">@o.Equipamento?.Descricao</td>
+                        <td data-rotulo="Localização">@o.Equipamento?.Localizacao</td>
+                        <td data-rotulo="Periodicidade">@o.Tipo.Nome()</td>
+                        <td data-rotulo="Status">
+                            @{ var situacao = o.Situacao(Model.Agora); }
+                            <span class="@situacao.Css()">@situacao.Nome()</span>
+                        </td>
+                        <td data-rotulo="Técnico">@(o.Tecnico?.NomeCompleto ?? "-")</td>
+                        <td data-rotulo="Coordenador">@(o.Coordenador?.NomeCompleto ?? "-")</td>
+                        <td data-rotulo="Data da manutenção" class="text-nowrap @(atrasada ? "st-atrasada" : "")">@o.DataConclusao.ToString("dd/MM/yyyy")</td>
+                        <td data-rotulo="Próxima manutenção" class="text-nowrap">@Regras.ProximaManutencao(o).ToString("dd/MM/yyyy")</td>
+                        @* Conclusão retornada pelo coordenador: clicar mostra quem retornou, quando e o motivo (interacoes.js seção 14). *@
+                        <td data-rotulo="Retorno">
+                            @if (o.MotivoRetorno != null)
+                            {
+                                <button type="button" class="pilula-retorno" title="Ver o motivo do retorno" data-retorno data-os="@o.Numero · @o.Equipamento?.Descricao"
+                                        data-quem="@o.RetornadaPor" data-quando="@o.RetornadaEm.Data()" data-motivo="@o.MotivoRetorno">@Icones.Svg("retornar", 14) Retornada</button>
+                            }
+                            else { <span>-</span> }
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="14" class="text-muted text-center">Nenhuma ordem de serviço encontrada.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<partial name="_Paginacao" model='new Paginacao(Model.Pagina, Model.Paginas, p => Url.Page("Index", Filtros(p)), Model.Total, "ordens de serviço")' />
+

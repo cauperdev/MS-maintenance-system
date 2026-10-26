@@ -1,0 +1,259 @@
+@page "{id:int?}"
+@model MS.Pages.Cronograma.EditarModel
+@*
+    ============================================================================
+    TELA: CRONOGRAMA — cadastro do plano (visual)  ·  lógica em Editar.cshtml.cs
+    Abas: 1. Geral (equipamento, prédio e localização vindos do equipamento, nome, ordem de trabalho, técnico e coordenador
+             responsáveis, periodicidade, datas, lembrete)
+          2. Tarefas do plano (checklist que a OS recebe; as de NR, em vermelho, só o EHS edita — campos em fieldset próprio)
+             Ao lado de cada tarefa, o botão 📖 da página do manual (só aparece se a máquina tiver manual): abre o manual e
+             o coordenador escolhe a página ("Usar esta página") — wwwroot/js/manual.js. Tarefa sem página recebe sozinha a
+             página achada pelo texto dela (Servicos/PaginaAutomatica.cs: Model.Achada aqui; ao digitar, manual.js pede
+             ?handler=Paginas); grava ao Salvar.
+    Botões no fim: Salvar · Salvar e adicionar outro · Remover (o EHS só tem Salvar).
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Cronograma";
+    ViewData["Trilha"] = "Manutenção";
+    ViewData["TrilhaPagina"] = "Cronograma";
+    ViewData["TrilhaUrl"] = Url.Page("Index");
+    ViewData["TrilhaAtual"] = Model.Plano.Id > 0 ? $"{Model.Plano.Nome} ({Model.CodigoEquip})" : "Adicionar";
+    var ro = !Model.PodeEditar;
+    var roNr = !Model.EditaNr; // tarefas de NR: só o EHS e o administrador
+    // Dica do 📖 (a mesma do manual.js → botaoPagina).
+    string TituloLivro(int? pag, MS.Servicos.PaginaAutomatica.Achada? achada) =>
+        pag == null ? "Escolher a página do manual"
+        : achada != null ? $"Página {pag}: onde o manual fala de {achada.Palavras} (clique para conferir ou trocar)"
+        : $"Página {pag} do manual (clique para trocar)";
+}
+<form method="post" class="form-layout">
+    <input type="hidden" id="abaAtiva" name="abaAtiva" value="@Model.AbaAtiva" />
+    @{
+        var eqPlano = Model.Equipamentos.FirstOrDefault(e => e.Id == Model.Plano.EquipamentoId);
+        var urlManual = eqPlano?.Manual != null ? Url.Page("Editar", "Manual", new { equipamento = eqPlano.Id, v = eqPlano.Manual }) : "";
+    }
+    <div class="cartao">
+        @* Máquina com manual: igual à OS — nome · código, periodicidade · data · linha e "Manual completo" (no celular, embaixo e largo).
+           O script no fim troca ao mudar o equipamento e esconde quando a máquina não tem manual. *@
+        <div class="cab-manual" id="cabManual" hidden="@(urlManual == "")">
+            <div class="cab-manual-nome" id="cabManualNome">@eqPlano?.Nome · @eqPlano?.Codigo</div>
+            <div class="cab-manual-info" id="cabManualInfo">@Model.Plano.Periodicidade.Nome().ToUpper()@(Model.DataManutencao is DateTime dm ? $" · {dm:dd/MM/yyyy}" : "") · @eqPlano?.Localizacao</div>
+            <button type="button" class="btn-ms b-contorno-azul abrir-manual" id="cabManualBotao" data-manual-url="@urlManual" data-manual-nome="@eqPlano?.ManualNome" data-manual-voltar="Voltar para o plano">@Icones.Svg("livro", 16) Manual completo</button>
+        </div>
+        <ul class="nav abas" role="tablist">
+            <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#aba-geral">General</button></li>
+            <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#aba-tarefas">Tarefas do plano (@Model.Tarefas.Count)</button></li>
+        </ul>
+        <div asp-validation-summary="All" class="text-danger mt-3"></div>
+        <div class="tab-content">
+            <div class="tab-pane fade show active painel-form" id="aba-geral">
+              <fieldset disabled="@ro">
+                <div class="campo">
+                    <label class="obrig" asp-for="Plano.EquipamentoId">Equipamento</label>
+                    <select class="form-select" asp-for="Plano.EquipamentoId" required data-pesquisa>
+                        <option value="">Selecione…</option>
+                        @foreach (var e in Model.Equipamentos)
+                        {
+                            <option value="@e.Id" data-local="@e.Localizacao" data-predio="@e.Predio" data-nome="@e.Nome" data-codigo="@e.Codigo"
+                                    data-manual="@(e.Manual != null ? Url.Page("Editar", "Manual", new { equipamento = e.Id, v = e.Manual }) : "")" data-manual-nome="@e.ManualNome">@e.Descricao</option>
+                        }
+                    </select>
+                </div>
+                <div class="campo"><label>Prédio</label><input class="form-control" id="predio" readonly value="@Model.Predio" /></div>
+                <div class="campo"><label>Localização</label><input class="form-control" id="localizacao" readonly value="@Model.Local" /></div>
+                <div class="campo"><label class="obrig" asp-for="Plano.Nome">Nome do plano</label><input class="form-control" asp-for="Plano.Nome" required maxlength="120" style="max-width:320px" /></div>
+                <div class="campo">
+                    <label>Ordem de trabalho</label>
+                    <div>
+                        <input class="form-control" readonly value="@(string.IsNullOrEmpty(Model.Plano.OrdemTrabalho) ? "(gerada ao salvar)" : Model.Plano.OrdemTrabalho)" />
+                        <div class="ajuda">Gerada automaticamente.</div>
+                    </div>
+                </div>
+                @* Escolhidos aqui; na OS do plano os dois aparecem só para leitura. *@
+                <div class="campo">
+                    <label asp-for="Plano.TecnicoId">Técnico responsável</label>
+                    <select class="form-select" asp-for="Plano.TecnicoId" asp-items="@(new SelectList(Model.Tecnicos, "Id", "NomeCompleto"))"><option value="">—</option></select>
+                </div>
+                <div class="campo">
+                    <label asp-for="Plano.CoordenadorId">Coordenador responsável</label>
+                    <select class="form-select" asp-for="Plano.CoordenadorId" asp-items="@(new SelectList(Model.Coordenadores, "Id", "NomeCompleto"))"><option value="">—</option></select>
+                </div>
+                <div class="campo"><label asp-for="Plano.Descricao">Descrição do serviço</label><textarea class="form-control" asp-for="Plano.Descricao" rows="6" style="max-width:420px"></textarea></div>
+                <div class="campo">
+                    <label class="obrig" asp-for="Plano.Periodicidade">Periodicidade</label>
+                    <div>
+                        <select class="form-select" asp-for="Plano.Periodicidade">
+                            @foreach (var p in Enum.GetValues<Periodicidade>()) { <option value="@p">@p.Nome()</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label class="obrig" for="dataManutencao">Data da manutenção</label>
+                    <input class="form-control" type="date" name="DataManutencao" id="dataManutencao" style="max-width:220px" required
+                           value="@(Model.DataManutencao?.ToString("yyyy-MM-dd"))" data-proxima="#proximaManutencao" data-periodo="#Plano_Periodicidade"
+                           data-inicio-auto="@(Model.Plano.Id == 0 ? Regras.DiasParaComecar.ToString() : null)" />
+                </div>
+                <div class="campo">
+                    <label for="proximaManutencao">Próxima manutenção</label>
+                    <div>
+                        <input class="form-control" type="date" name="ProximaManutencao" id="proximaManutencao" style="max-width:220px"
+                               value="@(Model.ProximaManutencao?.ToString("yyyy-MM-dd"))" />
+                        <div class="ajuda">Calculada automaticamente pela periodicidade — pode ser alterada.</div>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label for="Plano_LembreteDias">Lembrar antes do prazo</label>
+                    <div>
+                        <div style="max-width:220px">
+                            <input class="form-control" type="number" min="0" max="365" step="1" inputmode="numeric" name="Plano.LembreteDias" id="Plano_LembreteDias"
+                                   value="@Model.Plano.LembreteDias" placeholder="dias" />
+                        </div>
+                        @if (Model.Plano.LembreteDias is int diasLembrete && Model.DataManutencao is DateTime dataLembrete)
+                        {
+                            <div class="ajuda"><b>O sino avisa a partir de @dataLembrete.AddDays(-diasLembrete).ToString("dd/MM/yyyy").</b></div>
+                        }
+                        <div class="ajuda">Ex.: 5 = o sino de lembretes (no topo) avisa 5 dias antes da data da manutenção; 0 = no dia. Deixe em branco para não lembrar. Vale para a OS deste plano e acompanha a data a cada ciclo.</div>
+                    </div>
+                </div>
+              </fieldset>
+            </div>
+            @* data-manual-url: o manual da máquina escolhida (o script no fim troca ao mudar o equipamento). Sem manual,
+               os botões 📖 somem (classe sem-manual). *@
+            <div class="tab-pane fade painel-form @(urlManual == "" ? "sem-manual" : "")" id="aba-tarefas" data-manual-url="@urlManual" data-manual-nome="@eqPlano?.ManualNome" data-equipamento="@Model.Plano.EquipamentoId">
+                <fieldset disabled="@ro">
+                    <div id="listaTarefas">
+                        @for (var i = 0; i < Model.Tarefas.Count; i++)
+                        {
+                            if (Ehs.EhNr(Model.Tarefas[i])) continue;
+                            var achada = Model.Achada(i);
+                            var pag = Model.Pagina(i) ?? achada?.Pagina;
+                            <div class="tarefa-plano">
+                                <input type="hidden" name="TarefasNr" value="-" />
+                                <input type="hidden" name="TarefasPagina" value="@pag" data-auto="@(achada != null ? "1" : null)" data-achada="@achada?.Palavras" />
+                                <textarea class="form-control" name="Tarefas" rows="2" maxlength="500">@Model.Tarefas[i]</textarea>
+                                <button type="button" class="btn-livro escolher-pag @(pag == null ? "sem" : "")" title="@TituloLivro(pag, achada)">@Icones.Svg("livro", 22)<span>@(pag == null ? "+ pág" : $"p.{pag}")</span></button>
+                                @if (!ro) { <button type="button" class="btn btn-outline-danger" data-remover-linha=".tarefa-plano" title="Remover tarefa">@Icones.Svg("x", 16)</button> }
+                            </div>
+                        }
+                    </div>
+                </fieldset>
+                @* Tarefas de NR (EHS): sempre depois das tarefas; na OS o técnico marca como as outras (Servicos/Ehs.cs). *@
+                <fieldset disabled="@roNr">
+                    <div id="listaNr">
+                        @for (var i = 0; i < Model.Tarefas.Count; i++)
+                        {
+                            if (!Ehs.EhNr(Model.Tarefas[i])) continue;
+                            var achada = Model.Achada(i);
+                            var pag = Model.Pagina(i) ?? achada?.Pagina;
+                            <div class="tarefa-plano tarefa-nr">
+                                <input type="hidden" name="TarefasNr" value="EHS" />
+                                <input type="hidden" name="TarefasPagina" value="@pag" data-auto="@(achada != null ? "1" : null)" data-achada="@achada?.Palavras" />
+                                <div class="nr-caixa">
+                                    <div class="nr-topo">@Icones.Svg("alerta", 16) <span>EHS — tarefa</span></div>
+                                    <textarea class="form-control" name="Tarefas" rows="2" maxlength="490">@Ehs.TextoNoQuadro(Model.Tarefas[i])</textarea>
+                                </div>
+                                <button type="button" class="btn-livro escolher-pag @(pag == null ? "sem" : "")" title="@TituloLivro(pag, achada)">@Icones.Svg("livro", 22)<span>@(pag == null ? "+ pág" : $"p.{pag}")</span></button>
+                                @if (!roNr) { <button type="button" class="btn btn-outline-danger" data-remover-linha=".tarefa-plano" title="Remover tarefa de NR">@Icones.Svg("x", 16)</button> }
+                            </div>
+                        }
+                    </div>
+                </fieldset>
+                @if (!ro) { <button type="button" class="btn-ms b-azul mt-2" data-adicionar="tplTarefa" data-destino="listaTarefas">@Icones.Svg("mais") Adicionar tarefa</button> }
+                @if (!roNr) { <button type="button" class="btn-ms b-vermelho mt-2" data-adicionar="tplTarefaNr" data-destino="listaNr">@Icones.Svg("alerta") Adicionar NR (EHS)</button> }
+            </div>
+        </div>
+    </div>
+    <div class="lado">
+        @if (!ro)
+        {
+            <button class="btn-ms b-verde" name="acao" value="salvar">Salvar</button>
+            <button class="btn-ms b-azul" name="acao" value="outro">Salvar e adicionar outro(a)</button>
+            @if (Model.Plano.Id > 0)
+            {
+                <button class="btn-ms b-vermelho" asp-page-handler="Remover" data-confirmar="Remover este plano? As OS dele (e as finalizações dessas OS) também serão apagadas." formnovalidate>Remover</button>
+            }
+        }
+        else if (!roNr && Model.Plano.Id > 0)
+        {
+            @* Grupo EHS: salva só as tarefas de NR. *@
+            <button class="btn-ms b-verde" name="acao" value="salvar">Salvar</button>
+        }
+        @if (Model.Plano.Id > 0)
+        {
+            <div class="sep"></div>
+            <a class="btn-ms b-contorno-azul" asp-page="/Historico/Index" asp-route-entidade="Plano" asp-route-id="@Model.Plano.Id">Histórico</a>
+        }
+    </div>
+</form>
+
+<template id="tplTarefa">
+    <div class="tarefa-plano">
+        <input type="hidden" name="TarefasNr" value="-" />
+        <input type="hidden" name="TarefasPagina" value="" />
+        <textarea class="form-control" name="Tarefas" rows="2" maxlength="500"></textarea>
+        <button type="button" class="btn-livro escolher-pag sem" title="Escolher a página do manual">@Icones.Svg("livro", 22)<span>+ pág</span></button>
+        <button type="button" class="btn btn-outline-danger" data-remover-linha=".tarefa-plano" title="Remover tarefa">@Icones.Svg("x", 16)</button>
+    </div>
+</template>
+@* Tarefa de EHS: quadro vermelho só com o texto; gravado como "EHS — texto", sempre por último (Servicos/Ehs.cs). *@
+<template id="tplTarefaNr">
+    <div class="tarefa-plano tarefa-nr">
+        <input type="hidden" name="TarefasNr" value="EHS" />
+        <input type="hidden" name="TarefasPagina" value="" />
+        <div class="nr-caixa">
+            <div class="nr-topo">@Icones.Svg("alerta", 16) <span>EHS — tarefa</span></div>
+            <textarea class="form-control" name="Tarefas" rows="2" maxlength="490" placeholder="O que verificar (ex.: apertar o botão de emergência com a máquina em ciclo e confirmar a parada)"></textarea>
+        </div>
+        <button type="button" class="btn-livro escolher-pag sem" title="Escolher a página do manual">@Icones.Svg("livro", 22)<span>+ pág</span></button>
+        <button type="button" class="btn btn-outline-danger" data-remover-linha=".tarefa-plano" title="Remover tarefa de NR">@Icones.Svg("x", 16)</button>
+    </div>
+</template>
+<partial name="_VisorManual" />
+
+@section Scripts {
+    <script src="~/js/manual.js" asp-append-version="true"></script>
+    <script>
+        const sel = document.getElementById('Plano_EquipamentoId');
+        sel?.addEventListener('change', () => {
+            document.getElementById('localizacao').value = sel.selectedOptions[0]?.dataset.local ?? '';
+            document.getElementById('predio').value = sel.selectedOptions[0]?.dataset.predio || (sel.value ? '-' : '');
+            // O 📖 das tarefas abre o manual da máquina escolhida; sem manual, os botões somem.
+            const abaTarefas = document.getElementById('aba-tarefas');
+            abaTarefas.dataset.manualUrl = sel.selectedOptions[0]?.dataset.manual ?? '';
+            abaTarefas.dataset.manualNome = sel.selectedOptions[0]?.dataset.manualNome ?? '';
+            abaTarefas.dataset.equipamento = sel.value;
+            abaTarefas.classList.toggle('sem-manual', !abaTarefas.dataset.manualUrl);
+            window.MsManual?.paginasAutomaticas();   // páginas achadas pelo texto, agora no manual desta máquina
+            // "Manual completo" no alto: acompanha a máquina escolhida.
+            const op = sel.selectedOptions[0];
+            const botao = document.getElementById('cabManualBotao');
+            botao.dataset.manualUrl = op?.dataset.manual ?? '';
+            botao.dataset.manualNome = op?.dataset.manualNome ?? '';
+            document.getElementById('cabManualNome').textContent = op?.value ? `${op.dataset.nome} · ${op.dataset.codigo}` : '';
+            atualizarInfo();
+            document.getElementById('cabManual').hidden = !botao.dataset.manualUrl;
+        });
+        // Periodicidade · data · linha do alto acompanham os campos da aba Geral.
+        function atualizarInfo() {
+            const per = document.getElementById('Plano_Periodicidade');
+            const data = document.getElementById('dataManutencao').value;
+            const partes = [per?.selectedOptions[0]?.textContent.toUpperCase()];
+            if (data) partes.push(data.split('-').reverse().join('/'));
+            partes.push(sel?.selectedOptions[0]?.dataset.local ?? '');
+            document.getElementById('cabManualInfo').textContent = partes.join(' · ');
+        }
+        document.getElementById('Plano_Periodicidade')?.addEventListener('change', atualizarInfo);
+        // Caixa da tarefa cresce com o texto. Navegador com "field-sizing" (estilos.css) já faz sozinho; nos outros, aqui.
+        if (!CSS.supports('field-sizing', 'content')) {
+            const crescer = ta => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; };
+            const todas = () => document.querySelectorAll('.tarefa-plano textarea').forEach(crescer);
+            document.addEventListener('input', e => { if (e.target.matches?.('.tarefa-plano textarea')) crescer(e.target); });
+            document.querySelector('[data-bs-target="#aba-tarefas"]')?.addEventListener('shown.bs.tab', todas);   // aba escondida não tem altura
+            new MutationObserver(todas).observe(document.getElementById('listaTarefas'), { childList: true });
+            new MutationObserver(todas).observe(document.getElementById('listaNr'), { childList: true });
+            todas();
+        }
+        document.getElementById('dataManutencao')?.addEventListener('change', atualizarInfo);
+    </script>
+}

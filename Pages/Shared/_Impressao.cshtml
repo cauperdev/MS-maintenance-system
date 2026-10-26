@@ -1,0 +1,32 @@
+@*
+    ============================================================================
+    MOLDE DAS FOLHAS DE IMPRESSÃO (OS e Finalização).
+    Cabeçalho: ícone da marca (wwwroot/img/logo.svg) · título "MS-SYSTEM MAINTENANCE" · "Impresso em" + data.
+    Cores e tamanhos: estilos.css seção 12.
+    ============================================================================
+*@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/estilos.css" asp-append-version="true" />
+    <partial name="_IdiomaHead" />
+</head>
+<body>
+    <div class="folha">
+        <div class="folha-topo">
+            <img src="~/img/logo.svg" alt="" class="logo-empresa" />
+            <div class="folha-titulo">
+                <div class="nome">MS-SYSTEM MAINTENANCE</div>
+            </div>
+            <div class="folha-data">Impresso em<br />@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</div>
+        </div>
+        @RenderBody()
+    </div>
+    <script>window.addEventListener('load', () => setTimeout(() => window.print(), 300));</script>
+    <script src="~/js/traducao.js" asp-append-version="true"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+@model (string Texto, bool Feita)
+@*
+    LINHA DO CHECKLIST da ficha (tabela-doc): caixinha + texto da tarefa.
+    Tarefa de EHS ("EHS — ..." ou a antiga "NR-15 — ..."): mesma linha, em vermelho clarinho, com o selo "EHS"
+    (na antiga, "EHS · NR-15") — Servicos/Ehs.cs.
+    Usado dentro do <tbody> em: Ordens/_OsDetalhe (Ver e Imprimir) e Finalizacao/_FinDetalhe (Ver, revisão e Imprimir).
+    (Na tela de executar a OS, Ordens/Editar.cshtml desenha a mesma tarefa no formato das linhas de lá.)
+*@
+@{ var (nr, texto) = Ehs.Ler(Model.Texto); }
+<tr class="@(nr != null ? "linha-nr" : "")">
+    <td class="col-caixa"><span class="caixa @(Model.Feita ? "ok" : "")"></span></td>
+    <td>@if (nr != null) { <span class="selo-nr">EHS@(nr != "" ? " · " + nr : "")</span> } @texto</td>
+</tr>

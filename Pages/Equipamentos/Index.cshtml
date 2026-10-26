@@ -1,0 +1,124 @@
+﻿@page
+@model MS.Pages.Equipamentos.IndexModel
+@*
+    ============================================================================
+    TELA: EQUIPAMENTOS — lista (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros (prédio, localização, célula, status, pesquisa) · 2. botões (Adicionar, Remover, Baixar modelo, Importar Excel,
+            Extração, QR code) · 3. cartões com etiqueta colorida pelo status (celular/tablet) · 4. tabela (computador)
+            · 5. páginas de 50 (Shared/_Paginacao.cshtml) · 6. janela Importar Excel (Shared/_ModalImportar.cshtml)
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Equipamentos";
+    ViewData["Trilha"] = "Manutenção";
+    object Filtros(int pagina) => new { Model.Predio, Model.Local, Model.CelulaId, Model.Status, Model.Q, Pagina = pagina };
+    var variasPaginas = Model.Paginas > 1;   // "marcar todas" vale para todas as páginas
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Predio">
+        <option value="">Prédio</option>
+        @foreach (var p in Model.Predios) { <option value="@p">@p</option> }
+    </select>
+    <select class="form-select" asp-for="Local">
+        <option value="">Localização</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <select class="form-select" asp-for="Status">
+        <option value="">Status</option>
+        @foreach (var s in Textos.StatusEquipamentoOpcoes) { <option value="@s">@s.Nome()</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="Código, IRF, nome, modelo ou número de série" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+<form method="post">
+    @* Com "marcar todas" marcado (lista com várias páginas), Remover vale para todos da lista filtrada. *@
+    <input type="hidden" name="todos" id="removerTodos" value="false" />
+    @* Celular: um botão por linha; tablet: lado a lado, do mesmo tamanho (estilos.css → .barra-grade). *@
+    <div class="barra-acoes barra-grade">
+        @if (Model.PodeEditar)
+        {
+            <a class="btn-ms b-verde" asp-page="Editar">@Icones.Svg("mais") Adicionar equipamento</a>
+            <button class="btn-ms b-vermelho" asp-page-handler="Remover" asp-route-predio="@Model.Predio" asp-route-local="@Model.Local" asp-route-celulaid="@Model.CelulaId" asp-route-status="@Model.Status" asp-route-q="@Model.Q" data-exige-selecao=".sel-eq" data-confirmar="Remover {n} equipamento(s) marcado(s)? Os que têm planos ou OS não são removidos." data-confirmar-todos="Remover TODOS os {n} equipamentos da lista (todas as páginas)? Os que têm planos ou OS não são removidos.">@Icones.Svg("lixo") Remover selecionados</button>
+            <button type="button" class="btn-ms b-azul d-none d-lg-inline-flex" data-bs-toggle="modal" data-bs-target="#modalImportar">@Icones.Svg("enviar") Importar Excel</button>
+        }
+        @* Cor por função (pedido do usuário em 20/10/2026): cheios só os que mudam dados; os que só baixam arquivo,
+           brancos com borda azul e juntos no fim. Etiquetas = planilha do Import da nuvem (Servicos/Etiquetas.cs). *@
+        <a class="btn-ms b-contorno-azul d-none d-lg-inline-flex" asp-page-handler="ProdutosEtiqueta" title="Planilha das máquinas que têm etiqueta eletrônica, no formato do Import da nuvem">@Icones.Svg("baixar") Etiquetas eletrônicas</a>
+        <a class="btn-ms b-contorno-azul d-none d-lg-inline-flex" asp-page-handler="Modelo">@Icones.Svg("arquivo") Baixar modelo</a>
+        <a class="btn-ms b-contorno-azul" href="@Url.Page("Index", "Extracao", new { Model.Predio, Model.Local, Model.CelulaId, Model.Status, Model.Q })">@Icones.Svg("baixar") Extração</a>
+        <a class="btn-ms b-contorno-azul" href="@Url.Page("Index", "QrCode", new { Model.Predio, Model.Local, Model.CelulaId, Model.Status, Model.Q })" title="Planilha com o QR code de cada máquina que tem OS">@Icones.Svg("qrcode") QR code</a>
+    </div>
+    @* Celular e tablet: cartões com etiqueta colorida pelo status do equipamento; computador: tabela. *@
+    <div class="legenda legenda-cores d-lg-none">
+        <span><span class="quadro em-dia"></span>Operando</span>
+        <span><span class="quadro atencao"></span>Em manutenção</span>
+        <span><span class="quadro inativo"></span>Inativo</span>
+    </div>
+    @if (Model.PodeEditar && Model.Lista.Any())
+    {
+        <label class="marcar-cartoes d-lg-none">
+            <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-eq" data-total="@(variasPaginas ? (int?)Model.Total : null)" data-todos="@(variasPaginas ? "#removerTodos" : null)" />
+            <span>Marcar todos</span><span class="text-muted">(@Model.Total)</span>
+        </label>
+    }
+    <div class="cartoes d-lg-none">
+        @foreach (var e in Model.Lista)
+        {
+            var (cor, pilula) = e.Status switch
+            {
+                StatusEquipamento.Operando => ("em-dia", "st-ok"),
+                StatusEquipamento.EmManutencao => ("atencao", "pendente"),
+                _ => ("inativo", "text-muted"),
+            };
+            <div class="cartao-os" data-href="@Url.Page("Editar", new { id = e.Id })">
+                @if (Model.PodeEditar) { <input type="checkbox" class="form-check-input sel-eq mb-2" name="ids" value="@e.Id" aria-label="Marcar @e.Codigo" /> }
+                <div class="ticket @cor">
+                    <div><span>Nome:</span><span>@e.Nome</span></div>
+                    <div><span>Código:</span><span>@e.Codigo</span></div>
+                    <div><span>Linha:</span><span>@e.Localizacao</span></div>
+                </div>
+                <div class="titulo">@e.Descricao</div>
+                <div class="linha"><span>Área: @(e.Celula?.Nome ?? "-")</span><span class="pilula @pilula">@e.Status.Nome()</span></div>
+                <div class="botoes">
+                    <a asp-page="Editar" asp-route-id="@e.Id">@Icones.Svg("equipamento", 18) Editar</a>
+                    <a asp-page="/Cronograma/Index" asp-route-q="@e.Codigo">@Icones.Svg("plano", 18) Cronograma</a>
+                </div>
+            </div>
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted text-center">Nenhum equipamento encontrado.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    @if (Model.PodeEditar) { <th><input type="checkbox" class="form-check-input" data-marcar-todos=".sel-eq" data-total="@(variasPaginas ? (int?)Model.Total : null)" data-todos="@(variasPaginas ? "#removerTodos" : null)" aria-label="Marcar todas" /></th> }
+                    <th>Código</th><th>IRF</th><th>Nome</th><th>Modelo</th><th>Número de série</th><th>Prédio</th><th>Localização</th><th>Área</th><th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in Model.Lista)
+                {
+                    <tr class="linha-clicavel" data-href="@Url.Page("Editar", new { id = e.Id })">
+                        @if (Model.PodeEditar) { <td class="sem-rotulo acoes-linha"><input type="checkbox" class="form-check-input sel-eq" name="ids" value="@e.Id" aria-label="Marcar @e.Codigo" /></td> }
+                        <td data-rotulo="Código">@e.Codigo</td>
+                        <td data-rotulo="IRF">@(e.Irf ?? "-")</td>
+                        <td data-rotulo="Nome">@e.Nome</td>
+                        <td data-rotulo="Modelo">@(e.Modelo ?? "-")</td>
+                        <td data-rotulo="Número de série">@(e.NumeroSerie ?? "-")</td>
+                        <td data-rotulo="Prédio">@(e.Predio == "" ? "-" : e.Predio)</td>
+                        <td data-rotulo="Localização">@e.Localizacao</td>
+                        <td data-rotulo="Área">@(e.Celula?.Nome ?? "-")</td>
+                        <td data-rotulo="Status">@e.Status.Nome()</td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="10" class="text-muted text-center">Nenhum equipamento encontrado.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+<partial name="_Paginacao" model='new Paginacao(Model.Pagina, Model.Paginas, p => Url.Page("Index", Filtros(p)), Model.Total, "equipamentos")' />
+@if (Model.PodeEditar)
+{
+    <partial name="_ModalImportar" model="@("Importar de novo não duplica: a máquina que já existe é atualizada, e só a que não existe é criada (o sistema gera o código). Sem a coluna Código, o sistema acha a máquina pelos dados dela: IRF, número de série ou nome + prédio + localização + área. Status: Operando, Em manutenção ou Inativo. Área que não existir é cadastrada; em branco, a máquina nova entra na área em que você está. IRF (código da Samsung) é opcional e não pode repetir entre máquinas. Número de série é opcional.")" />
+}

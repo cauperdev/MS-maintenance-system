@@ -1,0 +1,129 @@
+﻿@page
+@model MS.Pages.Finalizacao.IndexModel
+@*
+    ============================================================================
+    TELA: FINALIZAÇÃO — lista (visual)  ·  lógica em Index.cshtml.cs
+    Partes: 1. filtros · 2. botões (Aprovado, Retornar, Extração) · 3. cartões (celular/tablet: amarelo aguardando,
+            verde aprovado) · 4. tabela com caixinhas (computador) · 5. páginas (‹ 1 / N ›)
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Finalização";
+    ViewData["Trilha"] = "Manutenção";
+    var revisa = Model.PodeEditar;
+    object Filtros(int pagina) => new { Model.Ano, Model.Mes, Model.Revisao, Model.Local, Model.CelulaId, Model.Q, Pagina = pagina };
+}
+<form method="get" class="filtros">
+    <select class="form-select" asp-for="Ano">
+        <option value="">Ano de conclusão</option>
+        @foreach (var a in Model.Anos) { <option value="@a">@a</option> }
+    </select>
+    <select class="form-select" asp-for="Mes">
+        <option value="">Mês de conclusão</option>
+        @for (var m = 1; m <= 12; m++) { <option value="@m">@Textos.Meses[m - 1]</option> }
+    </select>
+    @if (!Acesso.SoAprovadas(Model.Grupo))
+    {
+        <select class="form-select" asp-for="Revisao">
+            <option value="">Status da revisão</option>
+            @foreach (var s in Enum.GetValues<StatusRevisao>().Where(s => s != StatusRevisao.Retornado)) { <option value="@s">@s.Nome()</option> }
+        </select>
+    }
+    <select class="form-select" asp-for="Local">
+        <option value="">Localização</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <input class="form-control" asp-for="Q" placeholder="Número, código ou nome" />
+    <button class="btn-ms b-azulclaro" type="submit">Pesquisar</button>
+</form>
+
+<form method="post">
+    <div class="barra-acoes barra-grade">
+        @if (revisa)
+        {
+            <button class="btn-ms b-azulclaro" asp-page-handler="Aprovar" asp-all-route-data="@Model.Rota()" data-exige-selecao=".sel-fin" data-confirmar="Aprovar {n} conclusão(ões)?">@Icones.Svg("ok") Aprovado</button>
+            <button class="btn-ms b-vermelho" asp-page-handler="Retornar" asp-all-route-data="@Model.Rota()" data-exige-selecao=".sel-fin" data-confirmar="Retornar {n} conclusão(ões)? Elas saem da Finalização e a OS volta para a data daquele ciclo, para refazer." data-confirmar-campo="Motivo do retorno" data-confirmar-nome="motivo">@Icones.Svg("retornar") Retornar</button>
+        }
+        <a class="btn-ms b-contorno-azul" href="@Url.Page("Index", "Extracao", new { Model.Ano, Model.Mes, Model.Revisao, Model.Local, Model.CelulaId, Model.Q })">@Icones.Svg("baixar") Extração</a>
+    </div>
+
+    @* Celular e tablet: cartões com etiqueta colorida (amarela aguardando revisão, verde aprovada); computador: tabela. *@
+    <div class="legenda legenda-cores d-lg-none">
+        <span><span class="quadro atencao"></span>Aguardando revisão</span>
+        <span><span class="quadro em-dia"></span>Aprovada</span>
+    </div>
+    @if (revisa && Model.Lista.Any())
+    {
+        <label class="marcar-cartoes d-lg-none">
+            <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-fin" />
+            <span>Marcar todas</span><span class="text-muted">(@Model.Lista.Count())</span>
+        </label>
+    }
+    <div class="cartoes d-lg-none">
+        @foreach (var f in Model.Lista)
+        {
+            var cor = f.StatusRevisao == StatusRevisao.Aprovado ? "em-dia" : f.StatusRevisao == StatusRevisao.Aguardando ? "atencao" : "atrasada";
+            <div class="cartao-os" data-href="@(revisa ? Url.Page("Editar", new { id = f.Id }) : Url.Page("Ver", new { id = f.Id }))">
+                @if (revisa) { <input type="checkbox" class="form-check-input sel-fin mb-2" name="ids" value="@f.Id" aria-label="Marcar @f.NumeroOS" /> }
+                <div class="ticket @cor">
+                    <div><span>OS:</span><span>@f.NumeroOS</span></div>
+                    <div><span>Equip.:</span><span>@f.Equipamento?.Codigo</span></div>
+                    <div><span>Concluída:</span><span>@f.ConcluidaEm.ToString("dd/MM/yyyy HH:mm")</span></div>
+                </div>
+                <div class="titulo">@f.Equipamento?.Descricao</div>
+                <div class="linha"><span>@f.Tipo.Nome()</span><span class="pilula @f.StatusRevisao.Css()">@f.StatusRevisao.Nome()</span></div>
+                <div class="linha"><span>Técnico: @(f.Tecnico?.NomeCompleto ?? "-")</span></div>
+                <div class="botoes">
+                    <a asp-page="Ver" asp-route-id="@f.Id">@Icones.Svg("ver", 18) Ver</a>
+                    <a asp-page="Imprimir" asp-route-id="@f.Id" target="_blank">@Icones.Svg("imprimir", 18) Imprimir</a>
+                </div>
+            </div>
+        }
+        @if (!Model.Lista.Any()) { <div class="cartao text-muted text-center">Nenhuma finalização encontrada.</div> }
+    </div>
+
+    <div class="cartao d-none d-lg-block">
+        <table class="tabela tabela-cards">
+            <thead>
+                <tr>
+                    <th>@if (revisa) { <input type="checkbox" class="form-check-input" data-marcar-todos=".sel-fin" aria-label="Marcar todas" /> }</th>
+                    <th>Imprimir</th><th>Número da OS</th><th>Prédio</th><th>Código</th><th>Equipamento</th><th>Tipo</th>
+                    <th>Técnico</th><th>Coordenador</th><th>Concluída em</th><th>Status da revisão</th><th>Aprovada em</th><th>Aprovada por</th><th>OBA</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var f in Model.Lista)
+                {
+                    <tr class="linha-clicavel" data-href="@(revisa ? Url.Page("Editar", new { id = f.Id }) : Url.Page("Ver", new { id = f.Id }))">
+                        <td class="acoes-linha sem-rotulo">
+                            @if (revisa) { <input type="checkbox" class="form-check-input sel-fin" name="ids" value="@f.Id" aria-label="Marcar @f.NumeroOS" /> }
+                            <a class="acao-ic d-md-none" asp-page="Imprimir" asp-route-id="@f.Id" target="_blank">@Icones.Svg("imprimir", 22)</a>
+                        </td>
+                        @* Sem coluna "Visualização": clicar na linha já abre a conclusão. *@
+                        <td class="d-none d-md-table-cell"><a class="acao-ic" asp-page="Imprimir" asp-route-id="@f.Id" target="_blank" title="Imprimir">@Icones.Svg("imprimir", 22)</a></td>
+                        <td data-rotulo="Número da OS">@f.NumeroOS</td>
+                        <td data-rotulo="Prédio">@(f.Equipamento?.Predio is { Length: > 0 } predio ? predio : "-")</td>
+                        <td data-rotulo="Código">@f.Equipamento?.Codigo</td>
+                        <td data-rotulo="Equipamento">@f.Equipamento?.Descricao</td>
+                        <td data-rotulo="Tipo">@f.Tipo.Nome()</td>
+                        <td data-rotulo="Técnico">@(f.Tecnico?.NomeCompleto ?? "-")</td>
+                        <td data-rotulo="Coordenador">@(f.Coordenador?.NomeCompleto ?? "-")</td>
+                        <td data-rotulo="Concluída em" class="@(f.ConcluidaEm > f.DataConclusao ? "st-atrasada" : "")">@f.ConcluidaEm.Data()</td>
+                        <td data-rotulo="Status da revisão"><span class="@f.StatusRevisao.Css()">@f.StatusRevisao.Nome()</span></td>
+                        <td data-rotulo="Aprovada em">@f.AprovadaEm.Data()</td>
+                        <td data-rotulo="Aprovada por">@(f.AprovadaPor?.NomeCompleto ?? "-")</td>
+                        @* OBA: verde assim que a OS sai de Ordens de serviço (concluída = manutenção feita). Só verde, sem amarela. *@
+                        <td data-rotulo="OBA"><span class="ponto-redondo" style="background:var(--ok);width:12px;height:12px;margin:0" title="Manutenção feita"></span></td>
+                    </tr>
+                }
+                @if (!Model.Lista.Any()) { <tr><td colspan="14" class="text-muted text-center">Nenhuma finalização encontrada.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<partial name="_Paginacao" model='new Paginacao(Model.Pagina, Model.Paginas, p => Url.Page("Index", Filtros(p)), Model.Total, "Finalização")' />
+@if (Acesso.SoAprovadas(Model.Grupo))
+{
+    <p class="contagem">Seu grupo vê apenas as conclusões aprovadas.</p>
+}

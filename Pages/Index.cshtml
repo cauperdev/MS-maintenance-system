@@ -1,0 +1,175 @@
+@page
+@model IndexModel
+@*
+    ============================================================================
+    TELA: DASHBOARD DE MANUTENÇÃO (visual)  ·  lógica em Pages/Index.cshtml.cs
+    Partes, de cima para baixo:
+      (A área já vem filtrada pelo cliente escolhido depois do login — Pages/Conta/Area e Servicos/AreaEscolhida.cs.)
+      1. Quadros de números (Equipamentos, OS abertas, Atrasados, Concluídas)
+      2. Filtros por célula e por localização (a lista de localizações só mostra as da célula) + botão Extração
+      3. Roscas: Equipamentos por status · OS por status · Finalizações por revisão
+      4. Colunas: OS por localização · OS aprovadas por localização · OS atrasadas por localização
+         (título uma vez + um cartão por célula, um embaixo do outro — função PorCelula e lista "linhas")
+      5. Lista de OS (abre embaixo do gráfico ao clicar numa barra; em "OS por localização" também filtra) — função ListaOs
+    Desenho dos gráficos: Shared/_Rosca.cshtml e Shared/_Colunas.cshtml · cores e tamanhos: estilos.css seções 9 e 13.
+    ============================================================================
+*@
+@{
+    ViewData["Title"] = "Dashboard de Manutenção";
+    ViewData["TrilhaAtual"] = "Dashboard";
+
+    // Filtros atuais (a lista aberta não entra: trocar um filtro fecha a lista).
+    Microsoft.AspNetCore.Routing.RouteValueDictionary Filtros() => new()
+    {
+        ["CelulaId"] = Model.CelulaId, ["Local"] = Model.Local, ["Situacao"] = Model.Situacao, ["Tipo"] = Model.Tipo,
+        ["StatusEquip"] = Model.StatusEquip, ["Revisao"] = Model.Revisao,
+    };
+    // Link que troca só um filtro e mantém os outros.
+    string Link(string campo, object? valor)
+    {
+        var r = Filtros();
+        r[campo] = valor;
+        return Url.Page("/Index", r)!;
+    }
+    // Clicar na fatia já filtrada tira o filtro.
+    string Alterna(string campo, string? atual, string? valor) => Link(campo, atual == valor ? null : valor);
+
+    // Barra de um gráfico por localização: abre a lista das OS daquela localização (clicar de novo fecha).
+    // filtrar = true (gráfico "OS por localização"): a barra também filtra o dashboard pela localização.
+    bool ListaAtiva(string lista, string local) => Model.Lista == lista && Model.ListaLocal == local;
+    string ListaUrl(string lista, string local, bool filtrar = false)
+    {
+        var r = Filtros();
+        if (ListaAtiva(lista, local))
+        {
+            if (filtrar) r["Local"] = null;
+            return Url.Page("/Index", r)!;
+        }
+        if (filtrar) r["Local"] = local;
+        r["Lista"] = lista;
+        r["ListaLocal"] = local;
+        return Url.Page("/Index", r) + "#lista-os";
+    }
+}
+
+<div id="painel" data-sem-recarregar>
+<div class="kpis">
+    <div class="kpi"><div class="valor">@Model.Equipamentos</div><div class="rotulo">Equipamentos cadastrados</div></div>
+    <div class="kpi"><div class="valor" style="color:var(--aberta)">@Model.Abertas</div><div class="rotulo">Ordens de serviço abertas</div></div>
+    <div class="kpi"><div class="valor" style="color:var(--atrasada)">@Model.PlanosAtrasados</div><div class="rotulo">Planos preventivos atrasados</div></div>
+    <div class="kpi"><div class="valor" style="color:var(--ok)">@Model.Concluidas</div><div class="rotulo">Ordens de serviço concluídas</div></div>
+</div>
+
+<h2 class="h4 fw-normal">Indicadores</h2>
+<form method="get" class="filtros align-items-center">
+    <label class="fw-bold text-secondary" for="Local">Filtrar por localização:</label>
+    <select class="form-select" asp-for="Local" onchange="this.form.requestSubmit()">
+        <option value="">Todas as localizações</option>
+        @foreach (var l in Model.Localizacoes) { <option value="@l">@l</option> }
+    </select>
+    <input type="hidden" asp-for="Situacao" />
+    <input type="hidden" asp-for="Tipo" />
+    <input type="hidden" asp-for="StatusEquip" />
+    <input type="hidden" asp-for="Revisao" />
+    @if (Model.TemFiltroClique)
+    {
+        <a class="btn btn-sm btn-outline-secondary" href="@Url.Page("/Index", new { Model.CelulaId, Model.Local })">Limpar filtros de clique</a>
+    }
+    @if (Model.PodeEditar)
+    {
+        <a class="btn-ms b-contorno-azul ms-auto" data-normal href="@Link("handler", "Extracao")">@Icones.Svg("baixar") Extração</a>
+    }
+</form>
+
+@{
+    // Cores da paleta do sistema (estilos.css seção 1): azul, verde, amarelo e vermelho.
+    var roscaEquip = new Rosca("Equipamentos por status",
+        Model.PorStatusEquip.Select(b => new Fatia(b.Rotulo, b.Qtd, b.Cor,
+            Alterna("StatusEquip", Model.StatusEquip?.ToString(), b.Valor), Model.StatusEquip?.ToString() == b.Valor)).ToList());
+    var roscaOs = new Rosca("Ordens de serviço por status",
+        Model.PorSituacao.Select(b => new Fatia(b.Rotulo, b.Qtd, b.Cor,
+            Alterna("Situacao", Model.Situacao, b.Valor), Model.Situacao == b.Valor)).ToList());
+    var roscaFin = new Rosca("Finalizações por status de revisão",
+        Model.PorRevisao.Select(b => new Fatia(b.Rotulo, b.Qtd, b.Cor,
+            Alterna("Revisao", Model.Revisao?.ToString(), b.Valor), Model.Revisao?.ToString() == b.Valor)).ToList());
+}
+<div class="graficos-roscas">
+    <partial name="_Rosca" model="roscaEquip" />
+    <partial name="_Rosca" model="roscaOs" />
+    <partial name="_Rosca" model="roscaFin" />
+</div>
+
+@{
+    // Gráficos por localização: um por célula, só com as localizações dela. O nome do gráfico fica uma vez acima da
+    // linha e cada cartão leva só o nome da célula. filtrar = true (OS por localização): a barra também filtra pela localização.
+    var celulaEscolhida = Model.Celulas.FirstOrDefault(c => c.Id == Model.CelulaId)?.Nome ?? "Todas as áreas";
+    List<Colunas> PorCelula(Serie serie, List<(string Celula, List<(string Local, int Qtd)> Itens)> grupos, string lista, bool filtrar)
+    {
+        var graficos = grupos.Select(g => new Colunas(g.Celula, [serie],
+            g.Itens.Select(b => new Coluna(b.Local, [b.Qtd], ListaUrl(lista, b.Local, filtrar),
+                filtrar ? Model.Local == b.Local : ListaAtiva(lista, b.Local))).ToList())).ToList();
+        return graficos.Count > 0 ? graficos : [new Colunas(celulaEscolhida, [serie], [])]; // nenhuma máquina com esse filtro
+    }
+    var linhas = new[]
+    {
+        (Titulo: "Ordens de serviço por localização", Lista: "os",
+         Graficos: PorCelula(new Serie("Ordens de serviço", "var(--aberta)"), Model.OsPorCelula, "os", true)),
+        (Titulo: "Ordens de serviço aprovadas por localização", Lista: "aprovadas",
+         Graficos: PorCelula(new Serie("Aprovadas", "var(--ok)"), Model.AprovadasPorCelula, "aprovadas", false)),
+        (Titulo: "Ordens de serviço atrasadas por localização", Lista: "atrasadas",
+         Graficos: PorCelula(new Serie("Atrasadas", "var(--atrasada)"), Model.AtrasadasPorCelula, "atrasadas", false)),
+    };
+
+    // 5. Lista de OS da barra clicada (aprovadas → finalização; OS por localização e atrasadas → OS).
+    void ListaOs()
+    {
+        var aprovadas = Model.Lista == "aprovadas";
+        var titulo = Model.Lista switch { "aprovadas" => "OS aprovadas", "atrasadas" => "OS atrasadas", _ => "Ordens de serviço" };
+        string Href(int id) => aprovadas ? Url.Page("/Finalizacao/Ver", new { id })!
+            : (Model.Pode("ordens") ? Url.Page("/Ordens/Editar", new { id }) : Url.Page("/Ordens/Ver", new { id }))!;
+        // Quem não vê a Finalização (Técnico, Auditor, Visitante) vê as aprovadas sem link.
+        var semLink = aprovadas && !Model.Ve("finalizacao");
+        <div class="cartao lista-os" id="lista-os">
+            <div class="lista-os-topo">
+                <h3>@titulo — @Model.ListaLocal <span class="text-muted fw-normal">(@Model.ListaOs.Count)</span></h3>
+                @* Fechar = clicar de novo na barra (em "OS por localização" também tira o filtro). *@
+                <a class="btn-close" href="@ListaUrl(Model.Lista!, Model.ListaLocal!, filtrar: Model.Lista == "os")" title="Fechar" aria-label="Fechar"></a>
+            </div>
+            <div class="lista-os-rolagem">
+                <table class="lista-os-tabela">
+                    <thead><tr><th>Número</th><th>Equipamento</th><th>@(aprovadas ? "Concluída em" : "Data da manutenção")</th><th>Técnico</th><th>Coordenador</th></tr></thead>
+                    <tbody>
+                        @foreach (var o in Model.ListaOs)
+                        {
+                            <tr class="@(semLink ? null : "linha-clicavel")" data-href="@(semLink ? null : Href(o.Id))">
+                                <td>
+                                    @if (semLink) { <span class="numero st-ok">@o.Numero</span> }
+                                    else { <a class="numero @(aprovadas ? "st-ok" : o.Atrasada ? "st-atrasada" : "fw-bold")" data-normal href="@Href(o.Id)">@o.Numero</a> }
+                                </td>
+                                <td>@o.Equipamento</td>
+                                <td>@o.Data.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@(o.Tecnico ?? "-")</td>
+                                <td>@(o.Coordenador ?? "-")</td>
+                            </tr>
+                        }
+                        @if (!Model.ListaOs.Any()) { <tr><td colspan="5" class="text-muted text-center">Nenhuma OS nesta localização.</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+@* Cada linha: título do gráfico + um cartão por célula, um embaixo do outro, na largura toda (estilos.css "graficos-celulas"). *@
+<div class="graficos-pilha">
+    @foreach (var linha in linhas)
+    {
+        <div class="grupo-celulas">
+            <h3 class="grupo-celulas-titulo">@linha.Titulo</h3>
+            <div class="graficos-celulas">
+                @foreach (var c in linha.Graficos) { <div class="grafico-celula"><partial name="_Colunas" model="c" /></div> }
+            </div>
+        </div>
+        @if (Model.Lista == linha.Lista) { ListaOs(); }
+    }
+</div>
+</div>

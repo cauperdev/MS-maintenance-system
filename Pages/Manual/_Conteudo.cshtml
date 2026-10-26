@@ -1,0 +1,465 @@
+@*
+    ============================================================================
+    MANUAL DE USO — aba "Manual de uso" da tela Manual (Pages/Manual/Index.cshtml).
+    VISUAL (pedidos do usuário em 08/10/2026: "muita escrita, deixe algo mais visual" e "deixe com img"):
+    índice em botões (como era antes) e uma FICHA por tela: cabeçalho (ícone · para que serve · quem usa) +
+    à esquerda poucos passos numerados, uma figura e no máximo 3 "bom saber" curtos; à direita o PRINT da tela.
+    Prints: dados/manual/prints/*.jpg, abertos pela tela Manual com login (Index.cshtml.cs → OnGetPrint). Tirados do
+    próprio sistema; tela mudou? tire o print de novo e troque o arquivo (mesmo nome).
+    Estilos: estilos.css "Manual de uso VISUAL" (.mf, .mf-corpo, .mf-print, .mf-passos, .mf-fig, .mf-bom, .m-btn...).
+    Escrito em português (data-sem-traducao: a tradução do topo não mexe no manual).
+    O que muda com o sistema vem do código: permissões (Acesso.cs, as valendo na tela Grupos) · periodicidades ·
+    prefixos dos prédios e hora do resumo (appsettings.json) · limites de fotos, anexos, login e prazos.
+    ============================================================================
+*@
+@inject IConfiguration Config
+@inject MS.Servicos.Manual ArquivosManual
+@{
+    var grupos = Enum.GetValues<Grupo>();
+    var prefixos = Config.GetSection("PrefixosPredio").GetChildren()
+        .Where(p => !string.IsNullOrWhiteSpace(p.Value) && !string.Equals(p.Key, p.Value, StringComparison.OrdinalIgnoreCase))
+        .Select(p => $"{p.Key.ToUpper()} → {p.Value!.ToUpper()}").ToList();
+    var horaResumo = Config["Email:HoraResumo"] is { Length: > 0 } h ? h : "07:00";
+    var emailEmTeste = !string.IsNullOrWhiteSpace(Config["Email:Teste"]);
+    var pelaRede = Config.GetValue("AD:Ativo", false);
+
+    // Print da tela (clicar abre em tamanho real). celular: print estreito, do celular.
+    // Os arquivos ficam em dados/manual/prints e abrem pela tela Manual (com login: mostram dados do sistema).
+    // Sem o arquivo, a ficha aparece só com o texto (sem imagem quebrada).
+    async Task Print(string arquivo, string legenda, bool celular = false)
+    {
+        await Task.CompletedTask;
+        if (ArquivosManual.CaminhoPrint(arquivo) == null) return;   // print ainda não tirado: a ficha fica só com o texto
+        var url = Url.Page("/Manual/Index", "Print", new { n = arquivo });
+        <figure class="mf-print@(celular ? " celular" : "")">
+            <a href="@url" target="_blank" title="Abrir o print em tamanho real">
+                <img src="@url" alt="@legenda" loading="lazy" />
+            </a>
+            <figcaption>@legenda</figcaption>
+        </figure>
+    }
+}
+<div class="manual" data-sem-traducao>
+    <nav class="manual-indice" aria-label="Índice do manual">
+        <a href="#m-visao">1. Visão geral</a>
+        <a href="#m-entrar">2. Entrar no sistema</a>
+        <a href="#m-grupos">3. Grupos e permissões</a>
+        <a href="#m-areas">4. Áreas</a>
+        <a href="#m-usuarios">5. Usuários</a>
+        <a href="#m-equipamentos">6. Equipamentos</a>
+        <a href="#m-cronograma">7. Cronograma</a>
+        <a href="#m-ordens">8. Ordens de serviço</a>
+        <a href="#m-finalizacao">9. Finalização</a>
+        <a href="#m-spare">10. Spare Parts</a>
+        <a href="#m-calendario">11. Calendário</a>
+        <a href="#m-dashboard">12. Dashboard</a>
+        <a href="#m-jms">13. Histórico JMS</a>
+        <a href="#m-avisos">14. Sino e e-mails</a>
+        <a href="#m-historico">15. Histórico das alterações</a>
+        <a href="#m-dicas">16. Excel, celular e idioma</a>
+        <a href="#m-problemas">17. Se algo não funcionar</a>
+    </nav>
+
+    @* ================================================================ 1. VISÃO GERAL *@
+    <section id="m-visao" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("livro", 24)</span>
+            <div><h2>1. Visão geral</h2><p>O plano gera a OS, o técnico executa, o coordenador aprova.</p></div>
+        </header>
+        <div class="m-fluxo">
+            <div><span class="n">1</span><b>Cadastro</b><small>áreas, usuários e máquinas</small><span class="m-tag">Coordenador · Técnico</span></div>
+            <div><span class="n">2</span><b>Cronograma</b><small>plano: periodicidade + checklist</small><span class="m-tag">Coordenador · Técnico</span></div>
+            <div class="verde"><span class="n">3</span><b>OS gerada</b><small>data calculada sozinha</small><span class="m-tag auto">Automático</span></div>
+            <div class="azul"><span class="n">4</span><b>Execução</b><small>QR code: tarefas, peças, fotos</small><span class="m-tag">Técnico</span></div>
+            <div><span class="n">5</span><b>Finalização</b><small>aprova ou retorna</small><span class="m-tag">Coordenador</span></div>
+        </div>
+        <div class="mf-fig">
+            <span class="m-caixa ok"><b>✓ Aprovado</b><small>OS segue no próximo ciclo</small></span>
+            <span class="m-caixa ruim"><b>↺ Retornado</b><small>técnico refaz</small></span>
+        </div>
+        <div class="m-termos">
+            <div><b>Plano</b><span>o que fazer e de quanto em quanto tempo</span></div>
+            <div><b>OS</b><span>a ordem de serviço; repete a cada ciclo</span></div>
+            <div><b>Ciclo</b><span>uma execução da OS</span></div>
+            <div><b>Finalização</b><span>ciclo concluído, esperando o coordenador</span></div>
+            <div><b>Área</b><span>o cliente da máquina (SAMSUNG, AVELL...)</span></div>
+        </div>
+    </section>
+
+    @* ================================================================ 2. ENTRAR *@
+    <section id="m-entrar" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("chave", 24)</span>
+            <div><h2>2. Entrar no sistema</h2><p>@(pelaRede ? "Matrícula e senha do Windows." : "Usuário e senha.")</p></div>
+            <div class="mf-quem"><span class="m-tag">Todos</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li>Abra o sistema ou leia o <b>QR code</b> da máquina</li>
+                    <li>@(pelaRede ? "Matrícula + senha do Windows" : "Usuário + senha")</li>
+                    <li><span class="m-btn claro">Entrar</span></li>
+                </ol>
+                <div class="mf-bom">
+                    <div class="alerta">@Icones.Svg("alerta", 18)<div><b>@TentativasLogin.Maximo senhas erradas = espere @TentativasLogin.Pausa.TotalMinutes.ToString("0") min</b></div></div>
+                    @if (pelaRede) { <div>@Icones.Svg("usuario", 18)<div><b>1º acesso entra como Visitante</b><small>peça o seu grupo ao administrador</small></div></div> }
+                </div>
+            </div>
+            @{ await Print("login", "Tela de entrada"); }
+        </div>
+    </section>
+
+    @* ================================================================ 3. GRUPOS *@
+    <section id="m-grupos" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("escudo", 24)</span>
+            <div><h2>3. Grupos e permissões</h2><p>O grupo decide o que cada pessoa vê e edita.</p></div>
+            <div class="mf-quem"><span class="m-tag regra">Regra 07</span><span class="m-tag">Administrador</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <div class="mf-fig">
+                    <span class="m-caixa"><b>Visitante</b><small>consulta · OBA</small></span>
+                    <span class="m-caixa"><b>Auditor</b><small>consulta</small></span>
+                    <span class="m-caixa"><b>Técnico</b><small>executa</small></span>
+                    <span class="m-caixa"><b>Coordenador</b><small>aprova</small></span>
+                    <span class="m-caixa"><b>Administrador</b><small>tudo</small></span>
+                    <span class="m-caixa"><b>EHS</b><small>tarefas de NR</small></span>
+                </div>
+                <ol class="mf-passos">
+                    <li>Menu <b>Grupos</b> → abra o grupo</li>
+                    <li>Marque <b>Ver</b> e <b>Editar</b> → <span class="m-btn verde">Salvar</span></li>
+                </ol>
+            </div>
+            @{ await Print("grupos", "Permissões do grupo Técnico"); }
+        </div>
+        <h3>Permissões valendo agora</h3>
+        <div class="manual-tabela">
+            <table class="tabela">
+                <thead><tr><th>Tela</th>@foreach (var g in grupos) { <th>@g.Nome()</th> }</tr></thead>
+                <tbody>
+                    @foreach (var m in Acesso.Modulos)
+                    {
+                        <tr>
+                            <td><b>@m.Nome</b>@if (m.Ajuda != "") { <div class="manual-ajuda">@m.Ajuda</div> }</td>
+                            @foreach (var g in grupos)
+                            {
+                                if (Acesso.PodeEditar(g, m.Chave) && m.TemEditar)
+                                {
+                                    <td><span class="m-perm edita">@Icones.Svg("editar", 12) edita</span></td>
+                                }
+                                else if (Acesso.PodeVer(g, m.Chave) && m.TemVer)
+                                {
+                                    <td><span class="m-perm ve">@Icones.Svg("ver", 12) vê</span></td>
+                                }
+                                else
+                                {
+                                    <td class="text-muted">—</td>
+                                }
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    @* ================================================================ 4. ÁREAS *@
+    <section id="m-areas" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("celula", 24)</span>
+            <div><h2>4. Áreas</h2><p>Área = o cliente dono da máquina.</p></div>
+            <div class="mf-quem"><span class="m-tag">Coordenador</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li>Digite o nome → <span class="m-btn verde">Adicionar área</span></li>
+                    <li>Clique na área para renomear</li>
+                </ol>
+                <div class="mf-fig">
+                    <span class="m-caixa"><b>Área</b><small>SAMSUNG, AVELL...</small></span><span class="seta">›</span>
+                    <span class="m-caixa"><b>Filtros</b></span><span class="m-caixa"><b>E-mails</b><small>quem recebe</small></span>
+                </div>
+            </div>
+            @{ await Print("areas", "Tela Áreas"); }
+        </div>
+    </section>
+
+    @* ================================================================ 5. USUÁRIOS *@
+    <section id="m-usuarios" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("usuario", 24)</span>
+            <div><h2>5. Usuários</h2><p>Quem entra, o grupo e os e-mails de cada um.</p></div>
+            <div class="mf-quem"><span class="m-tag">Coordenador · Administrador</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li><span class="m-btn verde">Adicionar usuário</span></li>
+                    <li>@(pelaRede ? "Matrícula" : "Usuário"), nome, e-mail, grupo e área</li>
+                    <li><span class="m-btn verde">Salvar</span></li>
+                </ol>
+                <div class="mf-fig">
+                    <span class="m-caixa"><b>Área</b><small>SAMSUNG</small></span><span class="seta">›</span>
+                    <span class="m-caixa ok"><b>só e-mail da SAMSUNG</b></span>
+                </div>
+                <div class="mf-bom">
+                    <div>@Icones.Svg("usuario", 18)<div><b>Tirar o acesso: desmarque Ativo</b></div></div>
+                </div>
+            </div>
+            @{ await Print("usuarios", "Cadastro de usuário"); }
+        </div>
+    </section>
+
+    @* ================================================================ 6. EQUIPAMENTOS *@
+    <section id="m-equipamentos" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("equipamento", 24)</span>
+            <div><h2>6. Equipamentos</h2><p>As máquinas. O código é gerado sozinho.</p></div>
+            <div class="mf-quem"><span class="m-tag">Coordenador · Técnico</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li><span class="m-btn verde">Adicionar equipamento</span></li>
+                    <li>Nome, prédio e localização</li>
+                    <li><span class="m-btn verde">Salvar</span></li>
+                </ol>
+                <div class="mf-fig">
+                    <span class="m-codigo"><span>PRD<small>prédio</small></span><span>ADS<small>tipo</small></span><span>00113<small>número</small></span></span>
+                    @if (prefixos.Count > 0) { <span class="m-tag">@string.Join(" · ", prefixos)</span> }
+                </div>
+                <div class="mf-bom">
+                    <div>@Icones.Svg("qrcode", 18)<div><b><span class="m-btn">QR code</span> etiquetas das máquinas</b></div></div>
+                    <div class="alerta">@Icones.Svg("alerta", 18)<div><b>Com plano ou OS: Inativo</b><small>não dá para remover</small></div></div>
+                </div>
+            </div>
+            @{ await Print("equipamentos", "Cadastro do equipamento"); }
+        </div>
+    </section>
+
+    @* ================================================================ 7. CRONOGRAMA *@
+    <section id="m-cronograma" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("plano", 24)</span>
+            <div><h2>7. Cronograma</h2><p>O plano de cada máquina. Ao salvar, a OS nasce.</p></div>
+            <div class="mf-quem"><span class="m-tag regra">Regras 01 · 02 · 03</span><span class="m-tag">Coordenador · Técnico</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li>Equipamento + nome + periodicidade</li>
+                    <li><b>Técnico</b> e <b>coordenador</b> responsáveis</li>
+                    <li>Tarefas: uma por linha</li>
+                    <li>Tarefas de NR (vermelho): só o <b>EHS</b></li>
+                    <li><span class="m-btn verde">Salvar</span> = OS criada</li>
+                </ol>
+                <div class="mf-fig">
+                    <span class="m-caixa"><b>Hoje</b></span><span class="seta">+</span>
+                    <span class="m-caixa"><b>Periodicidade</b><small>mín. @Regras.DiasParaComecar dias</small></span><span class="seta">=</span>
+                    <span class="m-caixa ok"><b>1ª manutenção</b><small>nunca no domingo</small></span>
+                </div>
+                <div class="mf-bom">
+                    <div class="alerta">@Icones.Svg("alerta", 18)<div><b>Remover o plano apaga as OS dele</b><small>com conclusões e fotos</small></div></div>
+                </div>
+            </div>
+            @{ await Print("cronograma", "Plano de manutenção"); }
+        </div>
+    </section>
+
+    @* ================================================================ 8. ORDENS DE SERVIÇO *@
+    <section id="m-ordens" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("os", 24)</span>
+            <div><h2>8. Ordens de serviço</h2><p>O técnico executa a OS no celular.</p></div>
+            <div class="mf-quem"><span class="m-tag regra">Regras 04 · 06</span><span class="m-tag">Técnico</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li>Leia o <b>QR code</b> da máquina</li>
+                    <li>Marque as <b>Tarefas</b></li>
+                    <li>Fotos <span class="m-btn claro">@Icones.Svg("camera", 12) Antes</span> <span class="m-btn claro">@Icones.Svg("camera", 12) Depois</span></li>
+                    <li><span class="m-btn verde">Salvar</span> = concluída</li>
+                </ol>
+                <div class="mf-fig">
+                    <span class="m-st ok">Em dia</span>
+                    <span class="m-st atencao">Atenção · @OrdemServico.DiasAtencao dias</span>
+                    <span class="m-st atrasada">Atrasada</span>
+                </div>
+                <div class="mf-bom">
+                    <div class="alerta">@Icones.Svg("camera", 18)<div><b>Sem foto de hoje não conclui</b><small>1 de Antes + 1 de Depois</small></div></div>
+                    <div>@Icones.Svg("ciclo", 18)<div><b>Concluiu: a OS recomeça</b><small>com a data do próximo ciclo</small></div></div>
+                </div>
+            </div>
+            @{ await Print("os", "OS no celular", celular: true); }
+        </div>
+    </section>
+
+    @* ================================================================ 9. FINALIZAÇÃO *@
+    <section id="m-finalizacao" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("finalizacao", 24)</span>
+            <div><h2>9. Finalização</h2><p>O coordenador confere cada ciclo concluído.</p></div>
+            <div class="mf-quem"><span class="m-tag regra">Regra 05</span><span class="m-tag">Coordenador</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <ol class="mf-passos">
+                    <li>Abra a conclusão</li>
+                    <li>Confira tarefas e fotos</li>
+                    <li><span class="m-btn verde">Aprovado</span> ou <span class="m-btn vermelho">Retornar</span></li>
+                </ol>
+                <div class="mf-fig">
+                    <span class="m-caixa ok"><b>✓ Aprovado</b><small>fica registrado</small></span>
+                    <span class="m-caixa ruim"><b>↺ Retornar</b><small>motivo obrigatório; técnico refaz</small></span>
+                </div>
+            </div>
+            @{ await Print("finalizacao", "Lista da Finalização"); }
+        </div>
+    </section>
+
+    @* ================================================================ 10. SPARE PARTS *@
+    <section id="m-spare" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("peca", 24)</span>
+            <div><h2>10. Spare Parts</h2><p>Histórico do código das peças, separado por área. Sem estoque.</p></div>
+            <div class="mf-quem"><span class="m-tag auto">Automático</span></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <div class="mf-fig">
+                    <span class="m-caixa"><b>OS concluída</b></span><span class="seta">›</span>
+                    <span class="m-caixa"><b>CR-0889</b><small>código</small></span><span class="seta">›</span>
+                    <span class="m-caixa ok"><b>Histórico</b><small>OS, máquina, data</small></span>
+                </div>
+                <ol class="mf-passos">
+                    <li>Código, descrição, equipamento → <span class="m-btn verde">Adicionar</span></li>
+                </ol>
+            </div>
+            @{ await Print("spare", "Tela Spare Parts"); }
+        </div>
+    </section>
+
+    @* ================================================================ 11. CALENDÁRIO *@
+    <section id="m-calendario" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("calendario", 24)</span>
+            <div><h2>11. Calendário</h2><p>Cada OS no dia da manutenção. Clique no dia para ver a lista.</p></div>
+        </header>
+        <div class="mf-corpo">
+            <div class="mf-fig"><span class="m-st aberta">Aberta</span><span class="m-st atrasada">Atrasada</span></div>
+            @{ await Print("calendario", "Calendário do mês"); }
+        </div>
+    </section>
+
+    @* ================================================================ 12. DASHBOARD *@
+    <section id="m-dashboard" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("dashboard", 24)</span>
+            <div><h2>12. Dashboard</h2><p>Os indicadores, em tempo real. Clique numa fatia para filtrar.</p></div>
+        </header>
+        <div class="mf-corpo">
+            <div class="mf-bom">
+                <div>@Icones.Svg("celula", 18)<div><b>Filtro de área e localização</b><small>vale para tudo, até a Extração</small></div></div>
+            </div>
+            @{ await Print("dashboard", "Dashboard"); }
+        </div>
+    </section>
+
+    @* ================================================================ 13. HISTÓRICO JMS *@
+    <section id="m-jms" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("historico", 24)</span>
+            <div><h2>13. Histórico JMS</h2><p>As Work Orders do sistema antigo. Só consulta.</p></div>
+        </header>
+        <div class="mf-corpo">
+            <div class="mf-fig">
+                <span class="m-btn">Importar Excel</span><span class="seta">›</span>
+                <span class="m-caixa ok"><b>Não duplica</b></span>
+            </div>
+            @{ await Print("jms", "Histórico JMS"); }
+        </div>
+    </section>
+
+    @* ================================================================ 14. SINO E E-MAILS *@
+    <section id="m-avisos" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("email", 24)</span>
+            <div><h2>14. Sino e e-mails</h2><p>O sistema avisa sozinho — cada um só da sua área.</p></div>
+            <div class="mf-quem"><span class="m-tag auto">Automático</span></div>
+        </header>
+        @if (emailEmTeste)
+        {
+            <p class="manual-nota"><b>Modo de teste:</b> por enquanto os e-mails vão só para o administrador.</p>
+        }
+        <div class="mf-fig">
+            <span class="rotulo">@Icones.Svg("sino", 16)</span>
+            <span class="m-caixa"><b>Data da manutenção</b></span><span class="seta">−</span>
+            <span class="m-caixa"><b>Lembrar antes</b><small>dias, no plano</small></span><span class="seta">=</span>
+            <span class="m-caixa ok"><b>aparece no sino</b></span>
+        </div>
+        <div class="mf-fig">
+            <span class="rotulo">@Icones.Svg("email", 16)</span>
+            <span class="m-caixa"><b>Na hora</b><small>conclusão → coordenador</small></span>
+            <span class="m-caixa"><b>Todo dia @horaResumo</b><small>atrasadas · vencendo</small></span>
+            <span class="seta">·</span>
+            <span class="m-caixa"><b>Máquina SAMSUNG</b></span><span class="seta">›</span>
+            <span class="m-caixa ok"><b>✓ quem é da SAMSUNG</b></span>
+            <span class="m-caixa ruim"><b>✕ nunca a AVELL</b></span>
+        </div>
+    </section>
+
+    @* ================================================================ 15. HISTÓRICO *@
+    <section id="m-historico" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("ver", 24)</span>
+            <div><h2>15. Histórico das alterações</h2><p>Quem mudou, quando e o quê. Botão <span class="m-btn cinza">Histórico</span> de cada registro.</p></div>
+        </header>
+        <div class="mf-corpo">
+            <div class="mf-fig">
+                <span class="m-caixa"><b>Quem</b></span><span class="m-caixa"><b>Quando</b></span><span class="m-caixa"><b>De → para</b></span>
+            </div>
+            @{ await Print("historico", "Histórico de um equipamento"); }
+        </div>
+    </section>
+
+    @* ================================================================ 16. EXCEL, CELULAR E IDIOMA *@
+    <section id="m-dicas" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("tabela", 24)</span>
+            <div><h2>16. Excel, celular e idioma</h2><p>Vale para todas as telas.</p></div>
+        </header>
+        <div class="mf-corpo">
+            <div>
+                <div class="mf-fig">
+                    <span class="m-btn cinza">Baixar modelo</span><span class="seta">›</span>
+                    <span class="m-btn">Importar Excel</span><span class="seta">·</span>
+                    <span class="m-btn verde">Extração</span>
+                </div>
+                <div class="mf-bom">
+                    <div>@Icones.Svg("os", 18)<div><b>50 por página</b><small>números das páginas embaixo</small></div></div>
+                    <div>@Icones.Svg("globo", 18)<div><b>EN · ES · 中文 · 한국어</b><small>no globo do topo</small></div></div>
+                </div>
+            </div>
+            @{ await Print("lista-celular", "Lista no celular: cartões coloridos", celular: true); }
+        </div>
+    </section>
+
+    @* ================================================================ 17. PROBLEMAS *@
+    <section id="m-problemas" class="mf">
+        <header class="mf-cab">
+            <span class="mf-ic">@Icones.Svg("ajuda", 24)</span>
+            <div><h2>17. Se algo não funcionar</h2><p>Problema → o que fazer.</p></div>
+        </header>
+        <div class="m-qa">
+            <div>@Icones.Svg("celular", 18)<b>Não abre no celular</b><span>Wi-Fi da empresa. Endereço mudou? Novos QR codes.</span></div>
+            <div>@Icones.Svg("chave", 18)<b>"Muitas senhas erradas"</b><span>Espere @TentativasLogin.Pausa.TotalMinutes.ToString("0") minutos.</span></div>
+            <div>@Icones.Svg("camera", 18)<b>Foto recusada</b><span>Só vale foto tirada hoje.</span></div>
+            <div>@Icones.Svg("os", 18)<b>A OS não conclui</b><span>Falta foto ou tarefa marcada.</span></div>
+            <div>@Icones.Svg("email", 18)<b>Não recebo e-mail</b><span>Veja "Receber os avisos" e a Área no seu cadastro.</span></div>
+            <div>@Icones.Svg("escudo", 18)<b>Não vejo uma tela</b><span>Fale com o administrador (permissão do grupo).</span></div>
+        </div>
+    </section>
+</div>
